@@ -342,6 +342,298 @@ class FilterGenerator {
     const query = userQuery.toLowerCase();
     const availablePlatforms = (metadata.uniqueValues && metadata.uniqueValues.platform) || [];
 
+    // PHASE 2: Check for data discovery queries
+    // User asking what data is available or requesting sample queries
+    const dataDiscoveryPatterns = /what (data|information|metrics).*(do you have|available|can (i|you) (access|analyze|query))|what (do you|can (i|you)) have|show me (sample|example) quer(y|ies)|what can i (ask|query)|help me (get started|understand)|give me (examples|samples)|available (data|platforms|metrics)|quickstart|getting started/i;
+
+    // CRITICAL FIX: Don't trigger data discovery if query is a response to clarification
+    // These phrases indicate user clicked a clarification option, not asking for discovery
+    const isClarificationResponse = /(view|show).*(simple|intermediate|advanced|beginner).*(example|complexity|level)|view.*analysis examples|platform-data matrix|examples?.*(simple|intermediate|advanced|beginner)/i.test(query);
+
+    // PHASE 3: Don't re-trigger Phase 3 validations if query is from clarification option
+    const isPhase3ClarificationResponse = /compare ads from facebook.*instagram.*google only|compare organic posts across all platforms|show me ad and organic performance separately|sorted by (ctr|conversion rate|roas)|organic posts sorted by engagement rate/i.test(query);
+
+    // Handle clarification responses - user clicked one of the data discovery options
+    if (isClarificationResponse) {
+      // Beginner examples
+      if (/view.*beginner|view.*simple/i.test(query)) {
+        return {
+          valid: false,
+          needsClarification: true,
+          isDataDiscovery: true,
+          reason: 'Beginner-Level Sample Queries',
+          explanation: `
+# 📚 Beginner-Level Queries - Getting Started
+
+## Organic Posts Queries:
+1. Show me top 10 Instagram posts by engagement
+2. What is the average engagement rate for Facebook posts?
+3. Show me Twitter posts from November 2025
+4. Which platform has the highest engagement rate?
+
+## Ad Campaigns Queries:
+1. Show me Facebook ad campaigns with highest CTR
+2. What is the average ROAS for Google Ads?
+3. Show me Instagram ads sorted by conversion rate
+4. Which ad format performs best?
+
+## Sentiment Analysis Queries:
+1. Show me negative sentiment comments for Instagram
+2. What is the overall sentiment for Facebook posts?
+3. Show me English comments with positive sentiment
+4. Which platform has the most negative comments?
+
+💡 **Tip**: Copy any query above and paste it into the chat to try it out!
+`,
+          alternatives: []
+        };
+      }
+
+      // Intermediate examples
+      if (/view.*intermediate/i.test(query)) {
+        return {
+          valid: false,
+          needsClarification: true,
+          isDataDiscovery: true,
+          reason: 'Intermediate-Level Sample Queries',
+          explanation: `
+# 📊 Intermediate-Level Queries - Comparisons & Filtering
+
+1. Compare Facebook vs Instagram organic engagement
+2. Show me posts with engagement rate > 5%
+3. Compare Facebook Ads CTR to Instagram Ads CTR
+4. Show me sentiment for posts from November 2025
+5. Which content type (image/video/carousel) performs best on Instagram?
+6. Compare organic reach vs ad impressions for Facebook
+
+💡 **Tip**: These queries involve filtering and comparing data across platforms or metrics.
+`,
+          alternatives: []
+        };
+      }
+
+      // Advanced examples
+      if (/view.*advanced/i.test(query)) {
+        return {
+          valid: false,
+          needsClarification: true,
+          isDataDiscovery: true,
+          reason: 'Advanced-Level Sample Queries',
+          explanation: `
+# 🚀 Advanced-Level Queries - Complex Analysis
+
+1. Compare organic engagement_rate to ad CTR across platforms
+2. Show me correlation between sentiment and engagement rate
+3. Which platform has best ROI: organic posts or paid ads?
+4. Show me top performing posts and their sentiment distribution
+5. Compare weekend vs weekday performance across platforms
+6. Analyze engagement trends by content type and platform
+
+💡 **Tip**: These queries involve cross-data-type analysis and multi-metric comparisons.
+`,
+          alternatives: []
+        };
+      }
+
+      // Platform-data matrix
+      if (/platform-data matrix|complete.*matrix/i.test(query)) {
+        return {
+          valid: false,
+          needsClarification: true,
+          isDataDiscovery: true,
+          reason: 'Complete Platform-Data Matrix',
+          explanation: `
+# 🗃️ Platform-Data Matrix - What Data Exists Where
+
+## Facebook
+✅ **Organic Posts**: Yes
+✅ **Ad Campaigns**: Yes
+✅ **Sentiment/Comments**: Yes
+- Organic Metrics: engagement_rate, likes, comments, shares, reach, impressions
+- Ad Metrics: CTR, CPC, conversions, clicks, ad_spend
+- Sentiment Metrics: sentiment, sentiment_score, comment_text, language
+
+## Instagram
+✅ **Organic Posts**: Yes
+✅ **Ad Campaigns**: Yes
+✅ **Sentiment/Comments**: Yes
+- Organic Metrics: engagement_rate, likes, comments, shares, saves, reach, impressions
+- Ad Metrics: CTR, CPC, conversions, clicks, ad_spend
+- Sentiment Metrics: sentiment, sentiment_score, comment_text, language
+
+## Twitter
+✅ **Organic Posts**: Yes
+❌ **Ad Campaigns**: No
+✅ **Sentiment/Comments**: Yes
+- Organic Metrics: engagement_rate, likes, comments, shares, reach, impressions
+- Sentiment Metrics: sentiment, sentiment_score, comment_text, language
+
+## LinkedIn
+✅ **Organic Posts**: Yes
+❌ **Ad Campaigns**: No
+❌ **Sentiment/Comments**: No
+- Organic Metrics: engagement_rate, likes, comments, shares, reach, impressions
+
+## Google
+❌ **Organic Posts**: No
+✅ **Ad Campaigns**: Yes
+❌ **Sentiment/Comments**: No
+- Ad Metrics: CTR, CPC, ROAS, conversion_rate, conversions, clicks, cost_per_conversion
+
+---
+
+💡 **Key Takeaways**:
+- Only Facebook & Instagram have ALL three data types
+- Twitter has organic + sentiment (no ads)
+- LinkedIn has only organic posts
+- Google has only ad campaigns
+`,
+          alternatives: []
+        };
+      }
+    }
+
+    if (dataDiscoveryPatterns.test(query) && !isClarificationResponse) {
+      return {
+        valid: false,
+        needsClarification: true,
+        isDataDiscovery: true,
+        reason: 'Data Availability & Sample Queries Guide',
+        explanation: `
+# 📊 Available Data in the System
+
+## Platform Coverage:
+- **Facebook**: Organic posts + Ad campaigns + Sentiment
+- **Instagram**: Organic posts + Ad campaigns + Sentiment
+- **Twitter**: Organic posts + Sentiment (no ads)
+- **LinkedIn**: Organic posts only (no ads or sentiment)
+- **Google**: Ad campaigns only (no organic posts)
+
+## Data Types:
+
+### 1. Organic Posts (Facebook, Instagram, Twitter, LinkedIn)
+**Metrics**: engagement_rate, likes, comments, shares, reach, impressions, posted_time, posted_date, content_type
+
+### 2. Ad Campaigns (Facebook, Instagram, Google)
+**Metrics**: CTR, CPC, ROAS, conversion_rate, conversions, clicks, impressions, cost_per_conversion, revenue, ad_spend
+
+### 3. Sentiment/Comments (Facebook, Instagram, Twitter)
+**Metrics**: sentiment (positive/negative/neutral), sentiment_score, comment_text, language (en, hinglish, unspecified)
+
+---
+
+# 🎯 Sample Queries by Complexity Level
+`,
+        alternatives: [
+          {
+            // CRITICAL FIX: Don't use "show me...queries" which re-triggers dataDiscoveryPatterns
+            option: 'View simple beginner examples',
+            description: 'Simple queries for getting started (Organic Posts, Ads, Sentiment)'
+          },
+          {
+            option: 'View intermediate complexity examples',
+            description: 'Comparison and filtering queries across platforms'
+          },
+          {
+            option: 'View advanced analysis examples',
+            description: 'Complex cross-data-type analysis and multi-metric comparisons'
+          },
+          {
+            option: 'Show me the complete platform-data matrix',
+            description: 'Detailed breakdown of what data exists for each platform'
+          }
+        ],
+        sampleQueriesByLevel: {
+          beginner: {
+            organicPosts: [
+              'Show me top 10 Instagram posts by engagement',
+              'What is the average engagement rate for Facebook posts?',
+              'Show me Twitter posts from November 2025',
+              'Which platform has the highest engagement rate?'
+            ],
+            adCampaigns: [
+              'Show me Facebook ad campaigns with highest CTR',
+              'What is the average ROAS for Google Ads?',
+              'Show me Instagram ads sorted by conversion rate',
+              'Which ad format performs best?'
+            ],
+            sentiment: [
+              'Show me negative sentiment comments for Instagram',
+              'What is the overall sentiment for Facebook posts?',
+              'Show me English comments with positive sentiment',
+              'Which platform has the most negative comments?'
+            ]
+          },
+          intermediate: [
+            'Compare Facebook vs Instagram organic engagement',
+            'Show me posts with engagement rate > 5%',
+            'Compare Facebook Ads CTR to Instagram Ads CTR',
+            'Show me sentiment for posts from November 2025',
+            'Which content type (image/video/carousel) performs best on Instagram?',
+            'Compare organic reach vs ad impressions for Facebook'
+          ],
+          advanced: [
+            'Compare organic engagement_rate to ad CTR across platforms',
+            'Show me correlation between sentiment and engagement rate',
+            'Which platform has best ROI: organic posts or paid ads?',
+            'Show me top performing posts and their sentiment distribution',
+            'Compare weekend vs weekday performance across platforms',
+            'Analyze engagement trends by content type and platform'
+          ]
+        },
+        platformDataMatrix: {
+          Facebook: {
+            organicPosts: true,
+            adCampaigns: true,
+            sentiment: true,
+            organicMetrics: ['engagement_rate', 'likes', 'comments', 'shares', 'reach', 'impressions'],
+            adMetrics: ['CTR', 'CPC', 'conversions', 'clicks', 'ad_spend'],
+            sentimentMetrics: ['sentiment', 'sentiment_score', 'comment_text', 'language']
+          },
+          Instagram: {
+            organicPosts: true,
+            adCampaigns: true,
+            sentiment: true,
+            organicMetrics: ['engagement_rate', 'likes', 'comments', 'shares', 'saves', 'reach', 'impressions'],
+            adMetrics: ['CTR', 'CPC', 'conversions', 'clicks', 'ad_spend'],
+            sentimentMetrics: ['sentiment', 'sentiment_score', 'comment_text', 'language']
+          },
+          Twitter: {
+            organicPosts: true,
+            adCampaigns: false,
+            sentiment: true,
+            organicMetrics: ['engagement_rate', 'likes', 'comments', 'shares', 'reach', 'impressions'],
+            adMetrics: [],
+            sentimentMetrics: ['sentiment', 'sentiment_score', 'comment_text', 'language']
+          },
+          LinkedIn: {
+            organicPosts: true,
+            adCampaigns: false,
+            sentiment: false,
+            organicMetrics: ['engagement_rate', 'likes', 'comments', 'shares', 'reach', 'impressions'],
+            adMetrics: [],
+            sentimentMetrics: []
+          },
+          Google: {
+            organicPosts: false,
+            adCampaigns: true,
+            sentiment: false,
+            organicMetrics: [],
+            adMetrics: ['CTR', 'CPC', 'ROAS', 'conversion_rate', 'conversions', 'clicks', 'cost_per_conversion'],
+            sentimentMetrics: []
+          }
+        },
+        suggestedQueries: [
+          'Show me beginner-level queries',
+          'Show me intermediate-level queries',
+          'Show me advanced-level queries',
+          'Show me top Instagram posts',
+          'What is the average engagement rate?',
+          'Show me Facebook ad campaigns'
+        ]
+      };
+    }
+
     // Check if this is a sentiment/feedback/comment query
     const isSentimentQuery = /sentiment|feedback|comment|complain|negative|positive|neutral|rating/i.test(query);
 
@@ -369,6 +661,123 @@ class FilterGenerator {
             suggestedQueries: this.getSuggestedQueries(metadata)
           };
         }
+      }
+    }
+
+    // PHASE 2: Check for platform-specific data type availability
+    // Some platforms only have organic posts (Twitter, LinkedIn) or only ads (Google)
+
+    // Twitter: Only organic posts, NO ad campaigns
+    if (query.includes('twitter')) {
+      const isAskingForAds = query.includes('ad') || query.includes('campaign') ||
+                             query.includes('paid') || query.includes('sponsored');
+
+      if (isAskingForAds && !query.includes('organic')) {
+        return {
+          valid: false,
+          needsClarification: true,
+          reason: 'Twitter ad campaign data is not available in the current dataset.',
+          explanation: 'The dataset includes Twitter organic posts but does not have Twitter ad campaign data. Twitter ads would require separate API access and are not included in this dataset.',
+          alternatives: [
+            {
+              option: 'Show me Twitter organic posts performance',
+              description: 'View Twitter organic post engagement and reach'
+            },
+            {
+              option: 'Compare Twitter organic to other platforms',
+              description: 'See how Twitter posts perform vs Facebook, Instagram, LinkedIn'
+            },
+            {
+              option: 'Show me ad campaigns from available platforms',
+              description: 'View ads from Facebook, Instagram, or Google'
+            }
+          ],
+          suggestedQueries: [
+            'What is the engagement rate for Twitter posts?',
+            'Show me top Twitter posts by engagement',
+            'Compare Twitter vs Instagram organic performance',
+            'Show me Facebook ad campaigns',
+            'Compare organic posts across all platforms'
+          ],
+          availableForTwitter: ['organic posts', 'engagement metrics', 'reach', 'impressions'],
+          notAvailableForTwitter: ['ad campaigns', 'ad spend', 'CTR', 'conversions']
+        };
+      }
+    }
+
+    // Google: Only ad campaigns, NO organic posts
+    if (query.includes('google')) {
+      const isAskingForOrganic = query.includes('post') || query.includes('organic') ||
+                                 (query.includes('engagement') && !query.includes('ad'));
+
+      if (isAskingForOrganic && !query.includes('ad') && !query.includes('campaign')) {
+        return {
+          valid: false,
+          needsClarification: true,
+          reason: 'Google organic post data is not available in the current dataset.',
+          explanation: 'Google does not have a traditional social media platform with organic posts like Facebook or Instagram. The dataset includes Google Ads campaign data only.',
+          alternatives: [
+            {
+              option: 'Show me Google Ads campaign performance',
+              description: 'View Google Ads metrics like CTR, CPC, ROAS'
+            },
+            {
+              option: 'Compare Google Ads to Facebook/Instagram Ads',
+              description: 'See how Google Ads perform vs social media ads'
+            },
+            {
+              option: 'Show me organic posts from social platforms',
+              description: 'View organic posts from Facebook, Instagram, Twitter, LinkedIn'
+            }
+          ],
+          suggestedQueries: [
+            'What is the average ROAS for Google Ads?',
+            'Show me Google Ads campaigns with highest CTR',
+            'Compare Google Ads CPC to Facebook Ads',
+            'Show me all ad campaigns across platforms',
+            'Which platform has best ad performance?'
+          ],
+          availableForGoogle: ['ad campaigns', 'CTR', 'CPC', 'conversions', 'ROAS'],
+          notAvailableForGoogle: ['organic posts', 'likes', 'comments', 'shares', 'engagement_rate']
+        };
+      }
+    }
+
+    // LinkedIn: Only organic posts, NO ad campaigns
+    if (query.includes('linkedin')) {
+      const isAskingForAds = query.includes('ad') || query.includes('campaign') ||
+                             query.includes('paid') || query.includes('sponsored');
+
+      if (isAskingForAds && !query.includes('organic')) {
+        return {
+          valid: false,
+          needsClarification: true,
+          reason: 'LinkedIn ad campaign data is not available in the current dataset.',
+          explanation: 'The dataset includes LinkedIn organic posts but does not have LinkedIn ad campaign data.',
+          alternatives: [
+            {
+              option: 'Show me LinkedIn organic posts performance',
+              description: 'View LinkedIn post engagement and reach'
+            },
+            {
+              option: 'Compare LinkedIn to other professional platforms',
+              description: 'See how LinkedIn performs vs other platforms'
+            },
+            {
+              option: 'Show me ad campaigns from available platforms',
+              description: 'View ads from Facebook, Instagram, or Google'
+            }
+          ],
+          suggestedQueries: [
+            'What is the engagement rate for LinkedIn posts?',
+            'Show me top LinkedIn posts by engagement',
+            'Compare LinkedIn vs Twitter organic performance',
+            'Show me Facebook ad campaigns',
+            'Which organic posts perform best across platforms?'
+          ],
+          availableForLinkedIn: ['organic posts', 'engagement metrics', 'reach', 'impressions'],
+          notAvailableForLinkedIn: ['ad campaigns', 'ad spend', 'CTR', 'conversions']
+        };
       }
     }
 
@@ -495,12 +904,119 @@ class FilterGenerator {
       }
     }
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // PHASE 3: Cross-platform and metric ambiguity validations
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    // PHASE 3.1: Cross-platform ad comparison with mixed availability
+    // User asks to compare ads across "all platforms" but some platforms don't have ads
+    const isCrossPlatformAdQuery = /compare.*ad|ad.*comparison|ad.*performance.*across|all.*platform.*ad/i.test(query);
+    const mentionsMultiplePlatforms = (query.match(/facebook|instagram|twitter|linkedin|google/gi) || []).length > 1 ||
+                                      /all.*platform|across.*platform|every.*platform/i.test(query);
+
+    if (isCrossPlatformAdQuery && mentionsMultiplePlatforms && !isPhase3ClarificationResponse) {
+      // Check if query mentions platforms without ad data
+      const platformsWithoutAds = [];
+      if (query.includes('twitter')) platformsWithoutAds.push('Twitter');
+      if (query.includes('linkedin')) platformsWithoutAds.push('LinkedIn');
+
+      if (platformsWithoutAds.length > 0) {
+        return {
+          valid: false,
+          needsClarification: true,
+          reason: 'Cross-Platform Ad Comparison - Partial Data Available',
+          explanation: `⚠️ Ad Data Availability Notice
+
+Your query includes platforms that don't have ad campaign data in the dataset.
+
+Platforms WITH Ad Data:
+  • ✅ Facebook: Full ad campaign data
+  • ✅ Instagram: Full ad campaign data
+  • ✅ Google: Full ad campaign data
+
+Platforms WITHOUT Ad Data:
+${platformsWithoutAds.map(p => `  • ❌ ${p}: Only organic posts available, no ad campaigns`).join('\n')}
+
+Note: The comparison will only include platforms with ad data available.`,
+          alternatives: [
+            {
+              option: 'Compare ads from Facebook, Instagram, and Google only',
+              description: 'Analyze ad performance across platforms with available ad data'
+            },
+            {
+              option: 'Compare organic posts across all platforms instead',
+              description: 'All platforms have organic post data available'
+            },
+            {
+              option: 'Show me ad and organic performance separately',
+              description: 'View ads from some platforms and organic from others'
+            }
+          ],
+          platformsWithAds: ['Facebook', 'Instagram', 'Google'],
+          platformsWithoutAds: platformsWithoutAds
+        };
+      }
+    }
+
+    // PHASE 3.2: Metric ambiguity - "engagement" in mixed organic/ad queries
+    // "engagement" could mean engagement_rate (organic) or CTR (ads)
+    const mentionsEngagement = /\bengagement\b/i.test(query);
+    const mentionsAds = /\bad\b|\bads\b|campaign|paid|sponsored/i.test(query);
+    const mentionsOrganic = /organic|post(?!.*campaign)/i.test(query);
+    const isMixedQuery = mentionsAds && !mentionsOrganic; // Asking for engagement on ads
+
+    if (mentionsEngagement && isMixedQuery && !isPhase3ClarificationResponse) {
+      // User asking for "engagement" on ad campaigns - ambiguous!
+      return {
+        valid: false,
+        needsClarification: true,
+        reason: 'Metric Ambiguity - "Engagement" for Ad Campaigns',
+        explanation: `🤔 Metric Clarification Needed
+
+The term "engagement" is ambiguous when analyzing ad campaigns.
+
+Available Metrics:
+
+For Organic Posts:
+  • engagement_rate: Likes, comments, shares as % of reach
+
+For Ad Campaigns:
+  • CTR (Click-Through Rate): Clicks as % of impressions (ad engagement)
+  • conversion_rate: Conversions as % of clicks
+  • ROAS: Return on ad spend
+
+Which metric would you like to analyze?`,
+        alternatives: [
+          {
+            option: 'Show me ad campaigns sorted by CTR (click-through rate)',
+            description: 'CTR measures how many people clicked your ads'
+          },
+          {
+            option: 'Show me ad campaigns sorted by conversion rate',
+            description: 'Conversion rate measures how many clicks led to conversions'
+          },
+          {
+            option: 'Show me ad campaigns sorted by ROAS',
+            description: 'ROAS measures return on investment for ad spend'
+          },
+          {
+            option: 'Show me organic posts sorted by engagement rate instead',
+            description: 'Analyze organic post engagement (likes, comments, shares)'
+          }
+        ],
+        organicMetric: 'engagement_rate',
+        adMetrics: ['CTR', 'conversion_rate', 'ROAS'],
+        clarificationType: 'metric_ambiguity'
+      };
+    }
+
     // Check if query is completely off-topic
     const socialMediaKeywords = [
       'post', 'campaign', 'ad', 'engagement', 'likes', 'shares', 'reach', 'impression',
       'platform', 'facebook', 'instagram', 'twitter', 'linkedin', 'google',
       'content', 'performance', 'roas', 'conversion', 'ctr', 'clicks',
-      'follower', 'audience', 'organic', 'paid', 'media', 'social'
+      'follower', 'audience', 'organic', 'paid', 'media', 'social',
+      'sentiment', 'comment', 'feedback', 'language'  // CRITICAL FIX: Add sentiment-related keywords
     ];
 
     // Use word boundary matching to avoid false positives (e.g., "like" matching "likes")
@@ -528,7 +1044,8 @@ class FilterGenerator {
     const specificDayQuery = /\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i;
 
     if (!isSentimentQuery && !isComparisonQuery && weekdayPatterns.test(query)) {
-      const availableColumns = (metadata.columns && Object.keys(metadata.columns)) || [];
+      // CRITICAL FIX: metadata.columns is a Set, not an object
+      const availableColumns = (metadata.columns && Array.from(metadata.columns)) || [];
       const hasDayOfWeek = availableColumns.some(col =>
         col.toLowerCase().includes('day') && col.toLowerCase().includes('week')
       );
@@ -573,7 +1090,8 @@ class FilterGenerator {
       (timeOfDayPatterns.test(query) || timeGroupingKeywords.test(query)) &&
       !query.includes('posted_time')) {
 
-      const availableColumns = (metadata.columns && Object.keys(metadata.columns)) || [];
+      // CRITICAL FIX: metadata.columns is a Set, not an object
+      const availableColumns = (metadata.columns && Array.from(metadata.columns)) || [];
       const hasTimeCategory = availableColumns.some(col =>
         col.toLowerCase().includes('time') && (col.toLowerCase().includes('category') || col.toLowerCase().includes('period'))
       );
@@ -817,7 +1335,12 @@ class FilterGenerator {
 
     // Check for language-specific sentiment queries BEFORE skipping complexity detection
     const languagePatterns = /hindi|hinglish|tamil|telugu|bengali|marathi|gujarati|kannada|malayalam|punjabi|urdu|arabic|chinese|japanese|korean|spanish|french|german|italian|portuguese|russian/i;
-    if (isSentimentQuery && languagePatterns.test(query)) {
+
+    // CRITICAL FIX: Don't trigger validation if query asks for "all" or "available" languages
+    // These phrases indicate user wants whatever is available, not a specific language
+    const asksForAllLanguages = /all.*language|available.*language|any.*language|regardless.*language|language.*filter/i.test(query);
+
+    if (isSentimentQuery && languagePatterns.test(query) && !asksForAllLanguages) {
       // CRITICAL FIX: metadata.columns is a Set, not an object
       // Check using Array.from() or metadata.uniqueValues instead
       const hasLanguageColumn = metadata.uniqueValues && metadata.uniqueValues.language;
@@ -869,8 +1392,10 @@ class FilterGenerator {
               description: 'View all available comments regardless of language'
             },
             {
-              option: `Show me comments in: ${availableLanguages.slice(0, 3).join(', ')}`,
-              description: 'Filter by languages actually in the dataset'
+              // CRITICAL FIX: Don't include language names in option text to avoid re-triggering validation
+              // Instead use generic "available languages" which won't match languagePatterns
+              option: 'Show me sentiment data filtered by available languages',
+              description: `Languages in dataset: ${availableLanguages.slice(0, 3).join(', ')}`
             },
             {
               option: 'Show me sentiment grouped by language and platform',
@@ -1066,6 +1591,11 @@ class FilterGenerator {
       lowerQuery.includes(pattern)
     );
 
+    // CRITICAL FIX: Don't classify "best time to post on Facebook" as comparison query
+    // It mentions Facebook but is NOT comparing platforms - it's asking about timing
+    const isTimeQuery = /time of day|morning|afternoon|evening|night|(best|peak|optimal)\s+time\s+(to\s+post|for\s+posting)/i.test(lowerQuery);
+    const isWeekdayQuery = /(weekday|weekend|week day)\s+(vs|versus|compared|comparison|or)|during\s+(the\s+)?(week|weekday|weekend)/i.test(lowerQuery);
+
     // Platform/content context (broader than before)
     const hasComparisonContext =
       lowerQuery.includes('organic') ||
@@ -1081,7 +1611,8 @@ class FilterGenerator {
       lowerQuery.includes('image') ||
       lowerQuery.includes('carousel');
 
-    const isComparisonQuery = hasComparisonKeyword && hasComparisonContext;
+    // Only classify as comparison if it has comparison keywords AND is NOT a time/weekday query
+    const isComparisonQuery = hasComparisonKeyword && hasComparisonContext && !isTimeQuery && !isWeekdayQuery;
 
     if (isComparisonQuery) {
       console.log('🔧 PATCH: Comparison query detected - using specialized handling');
@@ -1101,6 +1632,7 @@ class FilterGenerator {
         suggestion: validation.suggestion,
         alternativeQuery: validation.alternativeQuery,
         explanation: validation.explanation,
+        isDataDiscovery: validation.isDataDiscovery, // CRITICAL FIX: Pass through for educational content detection
         availablePlatforms: validation.availablePlatforms,
         suggestedQueries: validation.suggestedQueries || [],
         alternatives: validation.alternatives,

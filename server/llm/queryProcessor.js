@@ -9,7 +9,7 @@ import QueryValidator from './queryValidator.js';
 
 /**
  * Main orchestrator for LLM-driven query processing
- * V4.3 FIXED: Now properly handles V4.3 rich clarification responses
+ * Coordinates all steps from query to response
  */
 class QueryProcessor {
   constructor() {
@@ -45,233 +45,6 @@ class QueryProcessor {
   }
 
   /**
-   * Quick pre-validation: Check for queries that are fundamentally impossible
-   * due to missing data structure (columns, files, etc.)
-   * This runs BEFORE any LLM calls to save time and provide instant clarification.
-   *
-   * @param {string} query - User query
-   * @returns {Object} { valid: true } or { valid: false, clarification: {...} }
-   */
-  quickValidate(query) {
-    const lowerQuery = query.toLowerCase();
-
-    // Check for time-of-day queries without time_category column
-    // NOTE: Be specific to avoid matching generic phrases like "time range" or "over time"
-    const timeOfDayPatterns = /(best|optimal|peak|ideal)\s+time\s+(to\s+post|for\s+posting|to\s+share)\b|time\s+of\s+day\b|time\s+slot\b|hour\s+of\s+(day|the\s+day)\b|(morning|afternoon|evening|night)\s+(post|time|engagement)/i;
-    if (timeOfDayPatterns.test(query)) {
-      console.log('🚫 Quick validation: Time-of-day query detected without time_category column');
-      return {
-        valid: false,
-        clarification: {
-          question: 'Time-of-day analysis requires categorical time grouping.',
-          reason: 'Posts have exact timestamps (posted_time) but no time-of-day categories.',
-          explanation: 'The data includes exact posting times like "14:23:45" but no categorical groupings like "Morning", "Afternoon", "Evening".\n\n' +
-                      'I cannot automatically group times into categories or determine the "best" time without this pre-computed grouping.',
-          whatYouCanDo: [
-            {
-              option: 'View posts with their exact posted_time',
-              example: 'Show me posts with posted_time, engagement_rate, and likes'
-            },
-            {
-              option: 'Group by date instead of time',
-              example: 'Which dates had the highest engagement for Facebook posts?'
-            },
-            {
-              option: 'Export data for manual time analysis',
-              example: 'Show me all posts with posted_time and engagement metrics'
-            }
-          ],
-          alternatives: [
-            {
-              option: 'Show posts with timestamps',
-              description: 'View posted_time and manually identify patterns'
-            },
-            {
-              option: 'Analyze by date',
-              description: 'Group performance by day rather than hour'
-            },
-            {
-              option: 'Specify exact hours',
-              description: 'Ask about posts between specific hours (e.g., "between 09:00 and 12:00")'
-            }
-          ],
-          suggestedQueries: [
-            'Show me Facebook posts with posted_time, engagement_rate, and likes',
-            'Which dates had the highest engagement?',
-            'Show me all posts sorted by engagement_rate'
-          ],
-          technicalDetails: {
-            available: 'posted_time (HH:MM:SS format)',
-            missing: 'time_category, time_period, hour_of_day (categorical columns)',
-            workaround: 'Extract data with posted_time and analyze in Excel/Python to group by hour'
-          }
-        }
-      };
-    }
-
-    // Check for weekday/weekend queries without day_of_week column
-    const weekdayPatterns = /(weekday|weekend|week day)\s+(vs|versus|compared|comparison|or)|during\s+(the\s+)?(week|weekday|weekend)|more\s+engagement.*(week|weekend)/i;
-    if (weekdayPatterns.test(query)) {
-      console.log('🚫 Quick validation: Weekday/weekend query detected without day_of_week column');
-      return {
-        valid: false,
-        clarification: {
-          question: 'Weekday vs weekend analysis requires day-of-week categorization.',
-          reason: 'Posts have dates (posted_date) but no day-of-week categorization.',
-          explanation: 'The data includes posting dates like "07-11-2025" but no information about which day of the week that is (Monday, Tuesday, etc.).\n\n' +
-                      'I cannot automatically determine if a date falls on a weekday or weekend without this pre-computed field.',
-          whatYouCanDo: [
-            {
-              option: 'View engagement grouped by individual dates',
-              example: 'Show me engagement by date - you can manually identify weekdays vs weekends'
-            },
-            {
-              option: 'View all posts with dates and engagement',
-              example: 'Show me all posts with posted_date and engagement metrics for manual analysis'
-            },
-            {
-              option: 'Ask about specific date ranges',
-              example: 'Show me posts from November 2025 sorted by engagement'
-            }
-          ],
-          alternatives: [
-            {
-              option: 'Group by individual date',
-              description: 'See engagement per date, then manually identify patterns'
-            },
-            {
-              option: 'Export full dataset',
-              description: 'Get all posts with dates for manual weekday/weekend analysis'
-            },
-            {
-              option: 'Ask about specific dates',
-              description: 'Query specific days if you know they were weekdays or weekends'
-            }
-          ],
-          suggestedQueries: [
-            'Show me engagement grouped by posted_date',
-            'Show me all posts with posted_date and engagement_rate',
-            'Which dates had the highest engagement in November?'
-          ],
-          technicalDetails: {
-            available: 'posted_date (DD-MM-YYYY format)',
-            missing: 'day_of_week, weekday, is_weekend (categorical columns)',
-            workaround: 'Extract data and use Excel/Python to calculate day of week from dates'
-          }
-        }
-      };
-    }
-
-    // Check for week number queries
-    const weekNumberPattern = /which\s+week|week\s+number|best\s+week|worst\s+week/i;
-    if (weekNumberPattern.test(query)) {
-      console.log('🚫 Quick validation: Week number query detected without week categorization');
-      return {
-        valid: false,
-        clarification: {
-          question: 'Week-based analysis requires week number categorization.',
-          reason: 'Posts have dates but no week number grouping.',
-          explanation: 'The data has individual dates but no "week 1", "week 2" categorization.',
-          alternatives: [
-            {
-              option: 'Group by date or month instead',
-              description: 'Analyze by specific dates or monthly trends'
-            },
-            {
-              option: 'Ask about date ranges',
-              description: 'Query specific date ranges representing weeks'
-            }
-          ],
-          suggestedQueries: [
-            'Show me engagement grouped by month',
-            'Show me posts from first week of November (Nov 1-7)',
-            'Which dates had the best performance?'
-          ]
-        }
-      };
-    }
-
-    // Check for below-average/above-average patterns
-    const averageComparisonPattern = /\b(below|above|under|over)[-\s]?(the\s+)?average\b/i;
-    if (averageComparisonPattern.test(query)) {
-      console.log('🚫 Quick validation: Below/above-average pattern detected (requires multi-pass)');
-      return {
-        valid: false,
-        clarification: {
-          question: 'Below-average/above-average filtering requires multi-pass data processing.',
-          reason: 'Cannot dynamically calculate averages and filter in a single query.',
-          explanation: 'To filter records as "below average" or "above average", the system would need to:\n' +
-                      '1. First calculate the average across all records\n' +
-                      '2. Then filter records based on that calculated average\n\n' +
-                      'This requires two separate operations that cannot be combined.',
-          alternatives: [
-            {
-              option: 'Show all posts sorted by the metric',
-              description: 'View results sorted so you can identify above/below average manually'
-            },
-            {
-              option: 'Use a specific threshold value',
-              description: 'Provide an explicit number (e.g., "engagement rate > 5%")'
-            },
-            {
-              option: 'Two-step approach',
-              description: 'Ask for the average first, then filter based on that number'
-            }
-          ],
-          suggestedQueries: [
-            'Show me all posts sorted by engagement rate descending',
-            'What is the average engagement rate?',
-            'Show me posts with engagement rate > 5%',
-            'Show me bottom 10 posts by impressions'
-          ]
-        }
-      };
-    }
-
-    // Check for hashtag extraction/correlation queries
-    const hashtagPattern = /hashtag(s)?\s+(correlat|associat|with\s+high|that\s+correlat|linked\s+to)/i;
-    if (hashtagPattern.test(query)) {
-      console.log('🚫 Quick validation: Hashtag extraction query detected (requires NLP)');
-      return {
-        valid: false,
-        clarification: {
-          question: 'Hashtag analysis requires text extraction from post content.',
-          reason: 'Hashtags are embedded in post text, not in a separate column.',
-          explanation: 'Hashtags exist within the "content" field (e.g., "Great product #EcoFriendly #Sustainable") but are not extracted into a separate searchable column.\n\n' +
-                      'Analyzing hashtag performance requires text parsing and extraction.',
-          alternatives: [
-            {
-              option: 'Search for posts containing specific hashtags',
-              description: 'Ask about posts that mention a specific hashtag you know'
-            },
-            {
-              option: 'View top posts with their content',
-              description: 'See high-performing posts and manually check their hashtags'
-            },
-            {
-              option: 'Export data for hashtag extraction',
-              description: 'Get post content and use external tools to extract hashtags'
-            }
-          ],
-          suggestedQueries: [
-            'Show me posts containing "#EcoFriendly"',
-            'Show me top 10 posts with their content and engagement',
-            'What are the most engaging posts on Instagram?'
-          ],
-          technicalDetails: {
-            available: 'content (full post text with embedded hashtags)',
-            missing: 'hashtags (extracted column)',
-            workaround: 'Export content and use regex/NLP tools to extract hashtags'
-          }
-        }
-      };
-    }
-
-    // All checks passed - query seems feasible
-    return { valid: true };
-  }
-
-  /**
    * Process a user query with multi-step support
    * @param {string} userQuery - The user's natural language query
    * @param {string} sessionId - Session identifier for conversation context
@@ -279,46 +52,6 @@ class QueryProcessor {
    */
   async processQuery(userQuery, sessionId = 'default') {
     const conversationManager = getConversationManager();
-
-    // ═══════════════════════════════════════════════════════════════════════════
-    // TEMPORARY REVERT - 2026-01-05
-    // ═══════════════════════════════════════════════════════════════════════════
-    // quickValidate() disabled - it breaks clarification follow-up workflow
-    //
-    // ISSUE: When user clicks clarification option like "Analyze by date",
-    //        the system loses context of original query ("best time to post on Facebook")
-    //        and returns generic aggregated data instead of Facebook-specific data.
-    //
-    // ROOT CAUSE: quickValidate() runs BEFORE conversation context is checked,
-    //             creating a context discontinuity between original query and follow-up.
-    //
-    // TEMPORARY FIX: Disable quickValidate() to restore December 28 working behavior.
-    //                System will be slower on impossible queries but clarifications work.
-    //
-    // PROPER FIX: See COMPLETE_COMPARISON_ANALYSIS.md Option C for implementation plan.
-    //             Requires: detect clarification follow-ups, pass context to filters,
-    //             track pending clarification state.
-    //
-    // TRADE-OFF: Time-of-day queries slow (50s) vs broken clarification workflow
-    //            Choice: Slow but working > Fast but broken
-    // ═══════════════════════════════════════════════════════════════════════════
-
-    // console.log('🔍 Running quick pre-validation...');
-    // const quickCheck = this.quickValidate(userQuery);
-    // if (!quickCheck.valid) {
-    //   console.log('⚠️  Quick validation failed - returning clarification immediately');
-    //   return {
-    //     success: false,
-    //     needsClarification: true,
-    //     clarification: quickCheck.clarification,
-    //     message: quickCheck.clarification.question,
-    //     metadata: {
-    //       processingTimeMs: 1,
-    //       quickValidationFailed: true
-    //     }
-    //   };
-    // }
-    // console.log('✅ Quick validation passed - proceeding with query analysis');
 
     // Analyze if query is multi-step or needs context
     const analysis = await conversationManager.analyzeQuery(userQuery, sessionId);
@@ -328,7 +61,6 @@ class QueryProcessor {
 
     if (analysis.isMultiStep && analysis.steps.length > 1) {
       // Multi-step query processing
-      console.log(`\n📊 Query Analysis: ${JSON.stringify(analysis)}`);
       console.log(`\n🔄 Multi-step query detected: ${analysis.steps.length} steps`);
       return await this.processMultiStepQuery(userQuery, analysis, sessionId);
     } else {
@@ -570,7 +302,6 @@ Provide a comprehensive executive summary with:
 
   /**
    * Process a single query (used by both single-step and multi-step)
-   * V4.3 FIXED: Now properly handles V4.3 rich clarification responses
    * @param {string} userQuery - The user's natural language query
    * @param {string} sessionId - Session identifier
    * @returns {Object} Complete response with data and metadata
@@ -594,50 +325,40 @@ Provide a comprehensive executive summary with:
       console.log('📝 Step 1/5: Generating filters with LLM...');
       const filterSpec = await this.filterGenerator.generateFilters(userQuery, this.metadata);
 
-      // ═══════════════════════════════════════════════════════════
-      // V4.3 FIX: Check for clarification using correct field names
-      // ═══════════════════════════════════════════════════════════
+      // Check if filter generator needs clarification
       if (filterSpec.needsClarification) {
-        // V4.3 returns rich response with multiple fields
-        // Extract options from ANY of these fields:
-        const options = filterSpec.options ||
-          filterSpec.alternatives ||
-          filterSpec.suggestedOptions ||
-          filterSpec.suggestedQueries ||
-          [];
-
-        console.log('⚠️  Query validation failed:', filterSpec.reason || filterSpec.clarificationNeeded);
         console.log('⚠️  Query needs clarification from filter generator');
-        console.log(`   - Question: ${filterSpec.clarificationNeeded || filterSpec.reason}`);
-        console.log(`   - Options: ${options.length}`);
+        console.log(`   - Question: ${filterSpec.clarificationNeeded}`);
+        console.log(`   - Options: ${filterSpec.alternatives?.length || filterSpec.suggestedOptions?.length || 0}`);
 
-        // Pass through ALL V4.3 rich data to frontend
+        // SPECIAL CASE: Educational/informational content with no options
+        // Return as successful informational response instead of clarification
+        const hasOptions = (filterSpec.alternatives?.length || filterSpec.suggestedOptions?.length || 0) > 0;
+        if (!hasOptions && filterSpec.explanation && filterSpec.isDataDiscovery) {
+          console.log('ℹ️  Returning educational content as informational response');
+          return {
+            success: true,
+            isEducational: true,
+            narrative: filterSpec.explanation,
+            data: [],
+            insights: {},
+            summary: { totalRecords: 0, recordsReturned: 0 },
+            metadata: {
+              processingTimeMs: Date.now() - startTime,
+            }
+          };
+        }
+
         return {
           success: false,
           needsClarification: true,
           clarification: {
-            // Main question (try multiple field names for compatibility)
-            question: filterSpec.clarificationNeeded || filterSpec.reason || filterSpec.question,
-
-            // Options array (handles both V4.2 and V4.3 formats)
-            options: options,
-
-            // V4.3 ADDITION: Pass through rich response data
-            alternatives: filterSpec.alternatives,
-            explanation: filterSpec.explanation,
-            dataAvailable: filterSpec.dataAvailable,
-            dataNotAvailable: filterSpec.dataNotAvailable,
-            suggestedActions: filterSpec.suggestedActions,
-            helpfulContext: filterSpec.helpfulContext,
-
-            // Legacy/backward compatibility
-            reason: filterSpec.interpretation || filterSpec.reason,
-            suggestion: filterSpec.suggestion,
-            alternativeQuery: filterSpec.alternativeQuery,
-            availablePlatforms: filterSpec.availablePlatforms,
-            suggestedQueries: filterSpec.suggestedQueries
+            question: filterSpec.clarificationNeeded,
+            options: filterSpec.alternatives || filterSpec.suggestedOptions || [],
+            reason: filterSpec.interpretation,
+            explanation: filterSpec.explanation // Pass through explanation for educational content
           },
-          message: 'This query needs clarification',
+          message: 'This query is ambiguous and needs clarification',
           metadata: {
             processingTimeMs: Date.now() - startTime,
           }

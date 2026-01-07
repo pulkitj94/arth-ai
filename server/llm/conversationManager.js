@@ -1,90 +1,362 @@
-/**
- * Conversation Manager - PATCHED VERSION V2
- * Fixes query decomposition issues for comparison AND ads metric queries
- * 
- * CHANGES:
- * 1. Better detection of simple comparison queries (don't decompose)
- * 2. Detection of ads metric queries like CTR, ROAS (don't decompose)
- * 3. More specific sub-queries when decomposition is needed
- * 4. Avoid vague "retrieve metrics" queries that trigger wrong validations
- */
-
-import OpenAI from 'openai';
-
-// Don't initialize OpenAI at module level - wait for .env to load
-let openai = null;
-
-function getOpenAI() {
-  if (!openai) {
-    openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-    });
-  }
-  return openai;
-}
+import { ChatOpenAI } from '@langchain/openai';
+import { LANGCHAIN_CONFIG } from '../langchain/config.js';
 
 /**
  * Conversation Manager
- * Handles multi-turn conversations and query context
+ * Handles multi-step queries with conversation context and memory
  */
 class ConversationManager {
   constructor() {
-    this.sessions = new Map();
+    this.llm = null; // Lazy initialization
+    this.conversations = new Map(); // sessionId -> conversation history
+    this.maxConversationAge = 3600000; // 1 hour
+    this.maxMessagesPerConversation = 20;
+  }
+
+  getLLM() {
+    if (!this.llm) {
+      this.llm = new ChatOpenAI({
+        modelName: LANGCHAIN_CONFIG.llm.modelName,
+        temperature: 0.1,
+        maxTokens: 2000,
+      });
+    }
+    return this.llm;
   }
 
   /**
-   * Get or create session
+   * Create or get conversation session
+   * @param {string} sessionId - Unique session identifier
+   * @returns {Object} Conversation context
    */
-  getSession(sessionId) {
-    if (!this.sessions.has(sessionId)) {
-      this.sessions.set(sessionId, {
+  getOrCreateSession(sessionId = 'default') {
+    if (!this.conversations.has(sessionId)) {
+      this.conversations.set(sessionId, {
         messages: [],
-        intermediateResults: [],
         createdAt: Date.now(),
+        lastAccessedAt: Date.now(),
+        intermediateResults: [],
       });
     }
-    return this.sessions.get(sessionId);
+
+    const session = this.conversations.get(sessionId);
+    session.lastAccessedAt = Date.now();
+
+    // Clean old sessions
+    this.cleanOldSessions();
+
+    return session;
   }
 
   /**
    * Add message to conversation history
+   * @param {string} sessionId - Session identifier
+   * @param {string} role - 'user' or 'assistant'
+   * @param {string} content - Message content
    */
   addMessage(sessionId, role, content) {
-    const session = this.getSession(sessionId);
+    const session = this.getOrCreateSession(sessionId);
+
     session.messages.push({
       role,
       content,
       timestamp: Date.now(),
     });
+
+    // Limit conversation length
+    if (session.messages.length > this.maxMessagesPerConversation) {
+      session.messages = session.messages.slice(-this.maxMessagesPerConversation);
+    }
   }
 
   /**
-   * Store intermediate result
+   * Store intermediate query result
+   * @param {string} sessionId - Session identifier
+   * @param {Object} result - Query result to store
    */
   storeIntermediateResult(sessionId, result) {
-    const session = this.getSession(sessionId);
+    const session = this.getOrCreateSession(sessionId);
+
     session.intermediateResults.push({
-      result,
       timestamp: Date.now(),
+      data: result.data,
+      summary: result.summary || this.summarizeResult(result),
     });
+
+    // Keep only last 5 intermediate results
+    if (session.intermediateResults.length > 5) {
+      session.intermediateResults = session.intermediateResults.slice(-5);
+    }
   }
 
   /**
-   * Get conversation context
+   * Detect if query is multi-step or has dependencies
+   * @param {string} userQuery - The user's query
+   * @param {string} sessionId - Session identifier
+   * @returns {Object} Analysis result
    */
-  getContext(sessionId) {
-    const session = this.getSession(sessionId);
-    return {
-      messages: session.messages.slice(-10), // Last 10 messages
-      intermediateResults: session.intermediateResults.slice(-3), // Last 3 results
-    };
+  async analyzeQuery(userQuery, sessionId = 'default') {
+    const session = this.getOrCreateSession(sessionId);
+    const hasHistory = session.messages.length > 0;
+
+    const prompt = this.buildAnalysisPrompt(userQuery, session, hasHistory);
+
+    try {
+      const llm = this.getLLM();
+      const response = await llm.invoke(prompt);
+      const content = response.content;
+
+      // Extract JSON from response
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        throw new Error('LLM did not return valid JSON');
+      }
+
+      const analysis = JSON.parse(jsonMatch[0]);
+
+      console.log('📊 Query Analysis:', {
+        isMultiStep: analysis.isMultiStep,
+        needsContext: analysis.needsContext,
+        steps: analysis.steps?.length || 0,
+      });
+
+      return analysis;
+    } catch (error) {
+      console.error('Error analyzing query:', error);
+      // Fallback: treat as single-step
+      return {
+        isMultiStep: false,
+        needsContext: hasHistory,
+        steps: [{ query: userQuery, description: userQuery }],
+        reasoning: 'Fallback to single-step processing',
+      };
+    }
   }
 
   /**
-   * Clear session
+   * Build analysis prompt for LLM
+   */
+  buildAnalysisPrompt(userQuery, session, hasHistory) {
+    const conversationContext = hasHistory
+      ? session.messages.slice(-6).map(m => `${m.role}: ${m.content}`).join('\n')
+      : 'No previous conversation';
+
+    const intermediateResults = session.intermediateResults.length > 0
+      ? session.intermediateResults.map((r, i) =>
+          `Result ${i + 1}: ${r.summary}`
+        ).join('\n')
+      : 'No previous results';
+
+    return `You are a query analyzer for a social media analytics system. Analyze if the user's query requires multi-step processing or references previous conversation context.
+
+CONVERSATION CONTEXT:
+${conversationContext}
+
+PREVIOUS RESULTS:
+${intermediateResults}
+
+USER QUERY:
+"${userQuery}"
+
+YOUR TASK:
+Determine if this query should be:
+1. **Multi-step**: Needs to be broken down into sequential sub-queries
+2. **Context-dependent**: References previous results or conversation
+3. **Single-step**: Can be processed directly
+
+Return JSON with this structure:
+{
+  "isMultiStep": true/false,
+  "needsContext": true/false,
+  "steps": [
+    {
+      "stepNumber": 1,
+      "query": "Rewritten query for step 1",
+      "description": "What this step does",
+      "dependsOn": null  // or stepNumber if depends on previous step
+    }
+  ],
+  "contextReference": "Description of how this relates to conversation history",
+  "reasoning": "Why you classified it this way"
+}
+
+MULTI-STEP INDICATORS:
+- "then", "after that", "next", "followed by"
+- "compare those results", "use that data"
+- "first X, then Y"
+- Sequential instructions
+
+CONTEXT-DEPENDENT INDICATORS:
+- "that", "those", "them" (referring to previous results)
+- "also", "additionally", "what about"
+- Follow-up questions
+- Pronouns without clear antecedents in current query
+
+EXAMPLES:
+
+Example 1 (Multi-step):
+User: "Show me top Instagram posts, then compare their engagement rates"
+Response:
+{
+  "isMultiStep": true,
+  "needsContext": false,
+  "steps": [
+    {
+      "stepNumber": 1,
+      "query": "Show me top Instagram posts sorted by engagement",
+      "description": "Get top Instagram posts",
+      "dependsOn": null
+    },
+    {
+      "stepNumber": 2,
+      "query": "Compare engagement rates of the top Instagram posts from previous step",
+      "description": "Compare engagement rates from step 1 results",
+      "dependsOn": 1
+    }
+  ],
+  "contextReference": null,
+  "reasoning": "Query has 'then' indicating sequential steps"
+}
+
+Example 2 (Context-dependent):
+Previous: "What are the top Facebook posts?"
+Current: "What about Instagram?"
+Response:
+{
+  "isMultiStep": false,
+  "needsContext": true,
+  "steps": [
+    {
+      "stepNumber": 1,
+      "query": "What are the top Instagram posts?",
+      "description": "Get top Instagram posts (similar to previous query)",
+      "dependsOn": null
+    }
+  ],
+  "contextReference": "Asking same question as previous query but for different platform",
+  "reasoning": "Follow-up question with platform change"
+}
+
+Example 3 (Single-step):
+User: "Which platform had highest engagement in November?"
+Response:
+{
+  "isMultiStep": false,
+  "needsContext": false,
+  "steps": [
+    {
+      "stepNumber": 1,
+      "query": "Which platform had highest engagement in November?",
+      "description": "Direct comparison query",
+      "dependsOn": null
+    }
+  ],
+  "contextReference": null,
+  "reasoning": "Self-contained query with no sequential steps"
+}
+
+Example 4 (Multi-step with context):
+Previous: "Show Instagram posts from November"
+Current: "Now filter those by engagement > 5% and show me the top 10"
+Response:
+{
+  "isMultiStep": false,
+  "needsContext": true,
+  "steps": [
+    {
+      "stepNumber": 1,
+      "query": "Show Instagram posts from November with engagement rate > 5%, sorted by engagement, limit 10",
+      "description": "Filter and sort previous results",
+      "dependsOn": null
+    }
+  ],
+  "contextReference": "References 'those' from previous query about Instagram posts",
+  "reasoning": "Context-dependent query that refines previous request"
+}
+
+Example 5 (Single-step with multiple outputs):
+User: "Which is the worst performing post type and on which platform?"
+Response:
+{
+  "isMultiStep": false,
+  "needsContext": false,
+  "steps": [
+    {
+      "stepNumber": 1,
+      "query": "Which is the worst performing post type and on which platform?",
+      "description": "Find worst performing content type and platform combination",
+      "dependsOn": null
+    }
+  ],
+  "contextReference": null,
+  "reasoning": "Single aggregation query asking for two related attributes (post type AND platform). Can be answered with one grouped query, no sequential steps needed."
+}
+
+IMPORTANT RULES:
+- "Which X and Y?" queries are usually SINGLE-STEP (not multi-step) - they ask for multiple attributes in one query
+- "First X, then Y" or "X, and then use that to find Y" are MULTI-STEP
+- Multi-step should ONLY be used when later steps truly depend on earlier results
+- Prefer single-step queries when possible - they're faster and more accurate
+- If needsContext is true, incorporate context into the rewritten query
+- Each step should be a complete, self-contained query
+- Return ONLY valid JSON, no explanations outside the JSON
+
+Now analyze the user's query above.`;
+  }
+
+  /**
+   * Summarize result for storage
+   */
+  summarizeResult(result) {
+    if (!result.data || result.data.length === 0) {
+      return 'No results found';
+    }
+
+    const recordCount = result.data.length;
+    const firstRecord = result.data[0];
+    const columns = Object.keys(firstRecord).slice(0, 3).join(', ');
+
+    return `${recordCount} records with columns: ${columns}`;
+  }
+
+  /**
+   * Clear conversation session
+   * @param {string} sessionId - Session identifier
    */
   clearSession(sessionId) {
-    this.sessions.delete(sessionId);
+    this.conversations.delete(sessionId);
+  }
+
+  /**
+   * Clean old sessions
+   */
+  cleanOldSessions() {
+    const now = Date.now();
+
+    for (const [sessionId, session] of this.conversations.entries()) {
+      if (now - session.lastAccessedAt > this.maxConversationAge) {
+        console.log(`🧹 Cleaning old conversation session: ${sessionId}`);
+        this.conversations.delete(sessionId);
+      }
+    }
+  }
+
+  /**
+   * Get conversation context as formatted string
+   * @param {string} sessionId - Session identifier
+   * @returns {string} Formatted conversation
+   */
+  getConversationContext(sessionId) {
+    const session = this.conversations.get(sessionId);
+
+    if (!session || session.messages.length === 0) {
+      return '';
+    }
+
+    return session.messages
+      .slice(-6) // Last 6 messages
+      .map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`)
+      .join('\n');
   }
 
   /**
@@ -92,447 +364,21 @@ class ConversationManager {
    */
   getStats() {
     return {
-      activeSessions: this.sessions.size,
-      sessions: Array.from(this.sessions.entries()).map(([id, session]) => ({
-        sessionId: id,
-        messageCount: session.messages.length,
-        age: Date.now() - session.createdAt,
-      })),
+      activeSessions: this.conversations.size,
+      totalMessages: Array.from(this.conversations.values())
+        .reduce((sum, s) => sum + s.messages.length, 0),
     };
-  }
-
-  /**
-   * ═══════════════════════════════════════════════════════════════════════════
-   * PATCHED: Analyze query for multi-step processing
-   * ═══════════════════════════════════════════════════════════════════════════
-   */
-  async analyzeQuery(userQuery, sessionId = 'default') {
-    const context = this.getContext(sessionId);
-
-    // ═══════════════════════════════════════════════════════════════════════════
-    // PATCH 1: Quick detection of simple queries that shouldn't be decomposed
-    // ═══════════════════════════════════════════════════════════════════════════
-
-    const lowerQuery = userQuery.toLowerCase();
-
-    // Simple comparison queries - DON'T decompose these
-    if (this.isSimpleComparisonQuery(lowerQuery)) {
-      console.log('🔧 PATCH: Detected simple comparison query - using single step');
-      return {
-        isMultiStep: false,
-        needsContext: false,
-        steps: [{
-          stepNumber: 1,
-          query: userQuery,
-          description: 'Process comparison query',
-          dependsOn: null
-        }],
-        contextReference: null,
-        reasoning: 'Simple comparison query handled as single step to avoid decomposition issues'
-      };
-    }
-
-    // Simple sentiment queries - DON'T decompose these
-    if (this.isSimpleSentimentQuery(lowerQuery)) {
-      console.log('🔧 PATCH: Detected simple sentiment query - using single step');
-      return {
-        isMultiStep: false,
-        needsContext: false,
-        steps: [{
-          stepNumber: 1,
-          query: userQuery,
-          description: 'Process sentiment query',
-          dependsOn: null
-        }],
-        contextReference: null,
-        reasoning: 'Simple sentiment query handled as single step to avoid decomposition issues'
-      };
-    }
-
-    // Categorical ranking queries - DON'T decompose these
-    // Examples: "Which ad format has the lowest cost?", "What platform has the best engagement?"
-    if (this.isCategoricalRankingQuery(lowerQuery)) {
-      console.log('🔧 PATCH: Detected categorical ranking query - using single step with groupBy');
-      return {
-        isMultiStep: false,
-        needsContext: false,
-        steps: [{
-          stepNumber: 1,
-          query: userQuery,
-          description: 'Process categorical ranking query',
-          dependsOn: null
-        }],
-        contextReference: null,
-        reasoning: 'Categorical ranking query should use groupBy + aggregate, not multi-step decomposition'
-      };
-    }
-
-    // Out-of-scope queries (like "Where is New Delhi?")
-    const outOfScopeKeywords = ['weather', 'capital', 'location', 'where is', 'what is the capital'];
-    const isOutOfScope = outOfScopeKeywords.some(keyword => lowerQuery.includes(keyword));
-
-    // ═══════════════════════════════════════════════════════════════════════════
-    // PATCH 2: Detect metric queries that should be processed as single-step
-    // ═══════════════════════════════════════════════════════════════════════════
-
-    // Check for ads-only metrics (CTR, CPC, ROAS, etc.)
-    const adsOnlyMetrics = ['ctr', 'click-through rate', 'click-through', 'cpc', 'cost per click', 'roas', 'return on ad spend', 'conversion rate'];
-    const hasAdsOnlyMetric = adsOnlyMetrics.some(metric => lowerQuery.includes(metric));
-
-    // Scenario 1: CTR/CPC/ROAS on ORGANIC posts (invalid - let validation handle)
-    const isAskingAboutOrganic = (lowerQuery.includes('organic') || lowerQuery.includes('post')) &&
-      !lowerQuery.includes('ad') &&
-      !lowerQuery.includes('campaign');
-    const isInvalidMetricQuery = isAskingAboutOrganic && hasAdsOnlyMetric;
-
-    // Scenario 2: CTR/CPC/ROAS for ADS (valid - but don't decompose!)
-    const isAskingAboutAds = lowerQuery.includes('ad') || lowerQuery.includes('campaign');
-    const isAdsMetricQuery = isAskingAboutAds && hasAdsOnlyMetric;
-
-    // Process as single-step for BOTH invalid metrics AND ads metrics
-    if ((isOutOfScope || isInvalidMetricQuery || isAdsMetricQuery) &&
-      !lowerQuery.includes('platform') && !lowerQuery.includes('compare')) {
-
-      let reason;
-      if (isInvalidMetricQuery) {
-        reason = 'invalid metric';
-      } else if (isAdsMetricQuery) {
-        reason = 'ads metric query';
-      } else {
-        reason = 'out-of-scope';
-      }
-
-      console.log(`🔧 PATCH: Detected ${reason} query - using single step`);
-
-      return {
-        isMultiStep: false,
-        needsContext: false,
-        steps: [{
-          stepNumber: 1,
-          query: userQuery,
-          description: isInvalidMetricQuery ? 'Validate metric availability' :
-            isAdsMetricQuery ? 'Process ads metric query' :
-              'Process out-of-scope query',
-          dependsOn: null
-        }],
-        contextReference: null,
-        reasoning: isInvalidMetricQuery ? 'Invalid metric query - will be caught by validation' :
-          isAdsMetricQuery ? 'Ads metric query processed as single step' :
-            'Out-of-scope query processed as single step'
-      };
-    }
-
-    // Try LLM-based analysis
-    try {
-      const prompt = `Analyze this social media analytics query and determine if it requires multiple steps.
-
-User Query: "${userQuery}"
-
-Recent Context:
-${context.messages.slice(-5).map(m => `${m.role}: ${m.content}`).join('\n')}
-
-Instructions:
-1. Determine if the query is multi-step or single-step
-2. If multi-step, break it down into sequential steps
-3. Each step should be SPECIFIC and ACTIONABLE (not vague)
-4. Avoid generic "retrieve metrics" queries - be specific about what metrics
-5. For comparison queries like "X vs Y", create specific queries for each platform
-
-CRITICAL RULES:
-- Comparison queries should specify exact metrics needed
-- Don't create vague queries like "Retrieve performance metrics"
-- Instead use: "Show [platform] posts with engagement rate, likes, comments, and reach"
-- For trend analysis, specify the time period and metric clearly
-
-Return JSON:
-{
-  "isMultiStep": true/false,
-  "needsContext": true/false,
-  "steps": [
-    {
-      "stepNumber": 1,
-      "query": "SPECIFIC actionable query with exact metrics and platform",
-      "description": "Brief description",
-      "dependsOn": null or step number
-    }
-  ],
-  "contextReference": "string or null",
-  "reasoning": "Why this approach"
-}
-
-Examples of GOOD queries:
-- "Show Instagram organic posts with engagement rate, likes, comments, shares, and reach"
-- "Show Instagram Ads campaigns with ROAS, CTR, impressions, and conversions"
-- "Calculate average engagement rate for Facebook posts in November 2025"
-
-Examples of BAD queries to AVOID:
-- "Retrieve performance metrics for Instagram organic posts" (too vague!)
-- "Get data for Instagram Ads" (what data?)
-- "Analyze Instagram performance" (analyze what?)`;
-
-      const response = await getOpenAI().chat.completions.create({
-        model: 'gpt-4o-mini',
-        messages: [{ role: 'user', content: prompt }],
-        temperature: 0.3,
-        response_format: { type: 'json_object' },
-      });
-
-      const analysis = JSON.parse(response.choices[0].message.content);
-
-      // ═══════════════════════════════════════════════════════════════════════════
-      // PATCH 3: Validate and improve the generated steps
-      // ═══════════════════════════════════════════════════════════════════════════
-      if (analysis.isMultiStep && analysis.steps) {
-        analysis.steps = this.validateAndImproveSteps(analysis.steps, userQuery);
-      }
-
-      return analysis;
-
-    } catch (error) {
-      console.error('Error analyzing query:', error);
-
-      // Fallback: treat as single-step with proper structure
-      return {
-        isMultiStep: false,
-        needsContext: false,
-        steps: [{
-          stepNumber: 1,
-          query: userQuery,
-          description: 'Process query',
-          dependsOn: null
-        }],
-        contextReference: null,
-        reasoning: 'Error in analysis, defaulting to single step'
-      };
-    }
-  }
-
-  /**
-   * ═══════════════════════════════════════════════════════════════════════════
-   * PATCH 4: Detect simple comparison queries
-   * IMPROVED: Expanded patterns to match more comparison variations
-   * ═══════════════════════════════════════════════════════════════════════════
-   */
-  isSimpleComparisonQuery(lowerQuery) {
-    // Pattern 1: Expanded comparison keywords
-    const comparisonPatterns = [
-      ' vs ',
-      ' vs. ',
-      ' versus ',
-      'compared to',
-      'compared with',
-      'compare ',
-      'comparison',
-      'performing compared',
-      'performance compared',
-      ' than ', // "better than", "higher than"
-      'against'
-    ];
-
-    const hasComparisonKeyword = comparisonPatterns.some(pattern =>
-      lowerQuery.includes(pattern)
-    );
-
-    // Pattern 2: Simple comparison (no complex analysis required)
-    const isSimple = !lowerQuery.includes('trend') &&
-      !lowerQuery.includes('month-over-month') &&
-      !lowerQuery.includes('over time') &&
-      !lowerQuery.includes('historical') &&
-      !lowerQuery.includes('predict') &&
-      !lowerQuery.includes('forecast');
-
-    // Pattern 3: Has platform/content context (broader than before)
-    const hasComparisonContext =
-      lowerQuery.includes('organic') ||
-      lowerQuery.includes('ads') ||
-      lowerQuery.includes('paid') ||
-      lowerQuery.includes('platform') ||
-      lowerQuery.includes('facebook') ||
-      lowerQuery.includes('instagram') ||
-      lowerQuery.includes('twitter') ||
-      lowerQuery.includes('linkedin') ||
-      lowerQuery.includes('google') ||
-      lowerQuery.includes('video') ||
-      lowerQuery.includes('image') ||
-      lowerQuery.includes('carousel') ||
-      lowerQuery.includes('performing') ||
-      lowerQuery.includes('performance');
-
-    return hasComparisonKeyword && isSimple && hasComparisonContext;
-  }
-
-  /**
-   * ═══════════════════════════════════════════════════════════════════════════
-   * PATCH 7: Detect categorical ranking queries
-   * These queries ask "which [category] has the [best/worst/highest/lowest] [metric]"
-   * They should be processed with groupBy + aggregate, not decomposed into steps
-   * ═══════════════════════════════════════════════════════════════════════════
-   */
-  isCategoricalRankingQuery(lowerQuery) {
-    // Pattern 1: "Which [category]" questions
-    const hasWhichCategory = lowerQuery.includes('which ') && (
-      lowerQuery.includes('platform') ||
-      lowerQuery.includes('ad format') ||
-      lowerQuery.includes('format') ||
-      lowerQuery.includes('campaign') ||
-      lowerQuery.includes('post type') ||
-      lowerQuery.includes('content type') ||
-      lowerQuery.includes('channel')
-    );
-
-    // Pattern 2: Ranking keywords
-    const hasRankingKeyword =
-      lowerQuery.includes('best') ||
-      lowerQuery.includes('worst') ||
-      lowerQuery.includes('highest') ||
-      lowerQuery.includes('lowest') ||
-      lowerQuery.includes('most') ||
-      lowerQuery.includes('least') ||
-      lowerQuery.includes('top ') ||
-      lowerQuery.includes('bottom');
-
-    // Pattern 3: "across" keyword indicating aggregation
-    const hasAcrossKeyword =
-      lowerQuery.includes('across all') ||
-      lowerQuery.includes('across platforms') ||
-      lowerQuery.includes('across channels');
-
-    // Pattern 4: Not a complex multi-step query
-    const isMultiStepIndicator =
-      lowerQuery.includes('and then') ||
-      lowerQuery.includes('after that') ||
-      lowerQuery.includes('followed by') ||
-      (lowerQuery.includes('calculate') && lowerQuery.includes('average')) ||
-      lowerQuery.split('?').length > 2;  // Multiple questions
-
-    const isNotComplexQuery =
-      !isMultiStepIndicator &&
-      !lowerQuery.includes('trend over time') &&
-      !lowerQuery.includes('month-over-month') &&
-      !lowerQuery.includes('year-over-year');
-
-    // This is a categorical ranking query if:
-    // (It asks "which category" OR has "across all") AND has ranking keywords AND is not complex
-    return (hasWhichCategory || hasAcrossKeyword) && hasRankingKeyword && isNotComplexQuery;
-  }
-
-  /**
-   * ═══════════════════════════════════════════════════════════════════════════
-   * PATCH 6: Detect simple sentiment queries
-   * ═══════════════════════════════════════════════════════════════════════════
-   */
-  isSimpleSentimentQuery(lowerQuery) {
-    // Pattern 1: Basic sentiment keywords
-    const hasSentimentKeywords = lowerQuery.includes('sentiment') ||
-      lowerQuery.includes('feedback') ||
-      lowerQuery.includes('comment') ||
-      lowerQuery.includes('negative') ||
-      lowerQuery.includes('positive') ||
-      lowerQuery.includes('neutral');
-
-    // Pattern 2: Sentiment score prioritization queries
-    const isSentimentScoreQuery = lowerQuery.includes('sentiment score') ||
-                                  lowerQuery.includes('sentiment scores') ||
-                                  (lowerQuery.includes('based on') && lowerQuery.includes('sentiment'));
-
-    // Pattern 3: Reply prioritization based on sentiment
-    const isReplyPrioritization = (lowerQuery.includes('reply') || lowerQuery.includes('respond')) &&
-                                   hasSentimentKeywords;
-
-    // Pattern 4: Simple request patterns (not complex multi-step)
-    const isSimpleRequest = (lowerQuery.includes('show') ||
-                            lowerQuery.includes('get') ||
-                            lowerQuery.includes('give') ||
-                            lowerQuery.includes('which') ||
-                            lowerQuery.includes('what')) &&
-                           !lowerQuery.includes('and then') &&
-                           !lowerQuery.includes('after that') &&
-                           !lowerQuery.includes('calculate') &&
-                           !lowerQuery.includes('analyze correlation') &&
-                           !lowerQuery.includes('trend over time');
-
-    // This is a simple sentiment query if:
-    // 1. It has sentiment keywords AND is a simple request, OR
-    // 2. It's asking about sentiment scores specifically, OR
-    // 3. It's asking about reply prioritization based on sentiment
-    return (hasSentimentKeywords && isSimpleRequest) ||
-           isSentimentScoreQuery ||
-           isReplyPrioritization;
-  }
-
-  /**
-   * ═══════════════════════════════════════════════════════════════════════════
-   * PATCH 5: Validate and improve decomposed steps
-   * ═══════════════════════════════════════════════════════════════════════════
-   */
-  validateAndImproveSteps(steps, originalQuery) {
-    const lowerOriginal = originalQuery.toLowerCase();
-
-    return steps.map((step, index) => {
-      let improvedQuery = step.query;
-      const lowerStep = step.query.toLowerCase();
-
-      // Fix vague "retrieve" queries
-      if (lowerStep.includes('retrieve') && lowerStep.includes('metrics')) {
-        console.log(`🔧 PATCH: Improving vague step ${index + 1}: "${step.query}"`);
-
-        // Extract platform from step query
-        const platforms = ['instagram', 'facebook', 'twitter', 'linkedin'];
-        const platform = platforms.find(p => lowerStep.includes(p));
-
-        // Determine if organic or ads
-        const isAds = lowerStep.includes('ads') || lowerStep.includes('ad campaign');
-        const type = isAds ? 'Ads' : 'organic posts';
-
-        if (platform) {
-          // Create specific query with exact metrics
-          const platformCap = platform.charAt(0).toUpperCase() + platform.slice(1);
-
-          if (isAds) {
-            improvedQuery = `Show ${platformCap} Ads campaigns with ROAS, CTR, impressions, conversions, and ad spend`;
-          } else {
-            improvedQuery = `Show ${platformCap} organic posts with engagement rate, likes, comments, shares, and reach`;
-          }
-
-          console.log(`   → Improved to: "${improvedQuery}"`);
-        }
-      }
-
-      // Fix vague "analyze" queries
-      if (lowerStep.includes('analyze') && lowerStep.includes('performance')) {
-        console.log(`🔧 PATCH: Improving vague analyze step ${index + 1}`);
-
-        // Make it more specific based on original query
-        if (lowerOriginal.includes('engagement')) {
-          improvedQuery = step.query.replace('analyze performance', 'calculate average engagement rate and total engagement metrics');
-        } else if (lowerOriginal.includes('reach')) {
-          improvedQuery = step.query.replace('analyze performance', 'calculate average reach and total impressions');
-        } else {
-          improvedQuery = step.query.replace('analyze performance', 'show all performance metrics including engagement, reach, and interactions');
-        }
-
-        console.log(`   → Improved to: "${improvedQuery}"`);
-      }
-
-      return {
-        ...step,
-        query: improvedQuery
-      };
-    });
   }
 }
 
 // Singleton instance
-let instance = null;
+let conversationManagerInstance = null;
 
-/**
- * Get singleton instance
- */
 export function getConversationManager() {
-  if (!instance) {
-    instance = new ConversationManager();
+  if (!conversationManagerInstance) {
+    conversationManagerInstance = new ConversationManager();
   }
-  return instance;
+  return conversationManagerInstance;
 }
 
 export default ConversationManager;
