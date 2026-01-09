@@ -57,6 +57,13 @@ Transform hours of manual reporting into instant, actionable insights with real-
 - **Auto-Refresh**: Live polling every 2 minutes for up-to-date insights
 
 
+
+### 🛡️ Robust Query Guardrails (New! Jan 2026)
+- **Intelligent Loop Prevention**: Smart detection preventing recursive clarification cycles for language and time-based queries
+- **Data Discovery Mode**: Ask "What data do you have?" for a comprehensive guide to available metrics and platforms
+- **Context-Aware Validations**: Proactive clarification for platform-specific limitations (e.g., "Twitter has no ad data", "Google has no organic posts")
+- **Metric Ambiguity Resolution**: Auto-detection of confusing metric requests (e.g., distinguishing between organic 'engagement' and ad 'CTR')
+
 ---
 
 ## 🏗️ Architecture

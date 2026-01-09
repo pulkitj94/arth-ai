@@ -1,32 +1,32 @@
 [
     {
         "platform": "Facebook",
-        "health_score": 64.04,
+        "health_score": 65.22,
         "distribution": {
-            "positive": 60.7,
-            "neutral": 6.7,
-            "negative": 32.6
+            "positive": 62.0,
+            "neutral": 6.5,
+            "negative": 31.5
         },
-        "total_comments": 89
+        "total_comments": 92
     },
     {
         "platform": "Instagram",
-        "health_score": 73.53,
+        "health_score": 73.08,
         "distribution": {
-            "positive": 70.6,
-            "neutral": 5.9,
-            "negative": 23.5
+            "positive": 69.2,
+            "neutral": 7.7,
+            "negative": 23.1
         },
-        "total_comments": 51
+        "total_comments": 52
     },
     {
         "platform": "Twitter",
-        "health_score": 53.95,
+        "health_score": 55.13,
         "distribution": {
-            "positive": 52.6,
+            "positive": 53.8,
             "neutral": 2.6,
-            "negative": 44.7
+            "negative": 43.6
         },
-        "total_comments": 38
+        "total_comments": 39
     }
 ]
