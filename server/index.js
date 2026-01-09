@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════════════════
-// EXPRESS SERVER - SOCIAL MEDIA COMMAND CENTER (SCENARIO ENABLED)
+// EXPRESS SERVER - SOCIAL MEDIA COMMAND CENTER (ROI & SCENARIO ENABLED)
 // ═══════════════════════════════════════════════════════════════════════════
 
 import express from 'express';
@@ -32,23 +32,17 @@ app.use(cors());
 app.use(express.json());
 
 // ═══════════════════════════════════════════════════════════════════════════
-// SHARED SIMULATION LOGIC (WITH SCENARIO SUPPORT)
+// SHARED SIMULATION LOGIC
 // ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Executes a specific simulation scenario (normal, crisis, viral)
- * then runs the sentiment engine to update the dashboard.
- */
 const runSimulationScenario = (scenario = "normal") => {
   const flag = scenario === "normal" ? "--once" : `--${scenario}`;
   console.log(`⚡ [SYSTEM] Triggering Scenario: ${scenario.toUpperCase()}`);
 
-  // Step 1: Run Mock Streamer with the specific scenario flag
-  exec(`python3 ../scripts/mock_streamer.py ${flag}`, (err, stdout) => {
+  exec(`python3 ../scripts/mock_streamer.py ${flag}`, (err) => {
     if (err) return console.error(`❌ Scenario ${scenario} failed:`, err);
     console.log(`📝 Mock Data Injected (${scenario}).`);
 
-    // Step 2: Run Sentiment Engine to process the new AI comments
     exec('python3 ../scripts/sentiment_engine.py', (err2) => {
       if (err2) return console.error("❌ AI Engine Step Failed:", err2);
       console.log("🤖 AI Re-analysis Complete. Dashboard Live.");
@@ -56,19 +50,87 @@ const runSimulationScenario = (scenario = "normal") => {
   });
 };
 
-// 🚀 HOURLY CRON: Runs the 'normal' scenario every hour
 cron.schedule('0 * * * *', () => {
   runSimulationScenario("normal");
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// ENDPOINTS
+// NEW: ROI MATRIX ANALYTICS ENDPOINT
 // ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Trigger specific simulation scenarios from the UI
- * Body: { scenario: "normal" | "crisis" | "viral" }
- */
+app.get('/api/analytics/roi-matrix', async (req, res) => {
+  try {
+    const dataDir = path.join(__dirname, 'data');
+
+    // 1. Load Ads Data from all platforms
+    const adFiles = [
+      'facebook_ads_ad_campaigns.csv',
+      'instagram_ads_ad_campaigns.csv',
+      'google_ads_ad_campaigns.csv'
+    ];
+
+    let allAds = [];
+    for (const file of adFiles) {
+      try {
+        const content = await fs.readFile(path.join(dataDir, file), 'utf8');
+        const parsed = parse(content, { columns: true, skip_empty_lines: true });
+        allAds = [...allAds, ...parsed];
+      } catch (e) { console.log(`Note: ${file} not found or empty.`); }
+    }
+
+    // 2. Load Sentiment Data
+    const sentimentContent = await fs.readFile(path.join(dataDir, 'enriched_comments_sentiment.csv'), 'utf8');
+    const comments = parse(sentimentContent, { columns: true, skip_empty_lines: true });
+
+    // 3. Merge Logic: Match Spend to Sentiment by platform and campaign type
+    // Group comments by platform to get platform-wide sentiment
+    const platformSentiment = {};
+    ['Facebook', 'Instagram', 'Google', 'Twitter'].forEach(platform => {
+      const platformComments = comments.filter(c =>
+        c.platform.toLowerCase().includes(platform.toLowerCase())
+      );
+      const pos = platformComments.filter(c => c.label === 'positive').length;
+      const neg = platformComments.filter(c => c.label === 'negative').length;
+      const total = platformComments.length;
+
+      platformSentiment[platform] = {
+        nss: total > 0 ? ((pos - neg) / total) * 100 : 0,
+        volume: total
+      };
+    });
+
+    // Create scatter plot data points from ad campaigns with platform sentiment
+    const matrix = allAds.map(ad => {
+      const platformKey = ad.platform.split(' ')[0]; // Extract "Facebook" from "Facebook Ads"
+      const sentiment = platformSentiment[platformKey] || { nss: 0, volume: 0 };
+
+      // Add some variation to sentiment based on campaign type and spend
+      // Higher spend campaigns might have slightly different sentiment
+      const spendFactor = parseFloat(ad.total_spend) > 50000 ? 1.1 : 0.9;
+      const variationFactor = (Math.random() * 0.4 - 0.2); // -20% to +20% variation
+      const adjustedSentiment = sentiment.nss * spendFactor * (1 + variationFactor);
+
+      return {
+        name: ad.campaign_name,
+        spend: parseFloat(ad.total_spend) || 0,
+        sentiment: Math.round(Math.max(-100, Math.min(100, adjustedSentiment))),
+        volume: Math.max(10, Math.round(sentiment.volume * (parseFloat(ad.total_spend) / 50000))),
+        platform: ad.platform,
+        clicks: parseInt(ad.clicks) || 0
+      };
+    }).filter(item => item.spend > 0); // Only show active campaigns
+
+    res.json(matrix);
+  } catch (error) {
+    console.error("ROI Matrix aggregation failed:", error);
+    res.json([]);
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// EXISTING DASHBOARD ENDPOINTS
+// ═══════════════════════════════════════════════════════════════════════════
+
 app.post('/api/simulate/trigger', (req, res) => {
   const { scenario } = req.body;
   runSimulationScenario(scenario || "normal");

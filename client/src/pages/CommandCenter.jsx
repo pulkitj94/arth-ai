@@ -41,20 +41,38 @@ function CommandCenter() {
   const [clarificationData, setClarificationData] = useState(null);
   const [showClarification, setShowClarification] = useState(false);
   const [pendingQuery, setPendingQuery] = useState('');
+  const [expandedCategories, setExpandedCategories] = useState(
+    APP_CONFIG.sampleQueries.reduce((acc, category, idx) => {
+      acc[idx] = category.defaultExpanded || false;
+      return acc;
+    }, {})
+  );
   const messagesEndRef = useRef(null);
+  const messagesContainerRef = useRef(null);
   const inputRef = useRef(null);
 
   const { addQuery } = useQueryHistory();
 
+  const toggleCategory = (idx) => {
+    setExpandedCategories(prev => ({
+      ...prev,
+      [idx]: !prev[idx]
+    }));
+  };
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const scrollToTop = () => {
+    messagesContainerRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
 
-  // Add welcome message on mount
+  // Add welcome message on mount and scroll to top
   useEffect(() => {
     if (APP_CONFIG.welcomeMessage.show) {
       setMessages([{
@@ -63,7 +81,19 @@ function CommandCenter() {
         timestamp: new Date()
       }]);
     }
+    // Scroll to top on initial load
+    scrollToTop();
   }, []);
+
+  const handleStopGeneration = () => {
+    setIsLoading(false);
+    const stopMessage = {
+      type: 'assistant',
+      content: '⚠️ Generation stopped by user.',
+      timestamp: new Date()
+    };
+    setMessages(prev => [...prev, stopMessage]);
+  };
 
   const handleSendMessage = async (messageText = inputValue) => {
     if (!messageText.trim() || isLoading) return;
@@ -77,7 +107,6 @@ function CommandCenter() {
     setMessages(prev => [...prev, userMessage]);
     setInputValue('');
     setIsLoading(true);
-    setShowSamples(false);
 
     addQuery(messageText);
 
@@ -201,7 +230,7 @@ function CommandCenter() {
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <ClarificationDialog
         clarification={clarificationData}
         onSelect={handleClarificationSelect}
@@ -209,12 +238,12 @@ function CommandCenter() {
         isOpen={showClarification}
       />
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+      <div className="flex gap-6 relative">
         {/* Chat Area */}
-        <div className="lg:col-span-3">
+        <div className={`flex-1 transition-all duration-300 ${showSamples ? 'pr-[440px]' : 'pr-0'}`}>
           <div className="bg-white rounded-xl shadow-lg border border-gray-200 flex flex-col" style={{ height: 'calc(100vh - 200px)' }}>
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+            <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-6 space-y-4">
               {messages.map((message, index) => (
                 <div
                   key={index}
@@ -287,48 +316,117 @@ function CommandCenter() {
                     className="flex-1 rounded-lg border border-gray-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                     disabled={isLoading}
                   />
-                  <button
-                    onClick={() => handleSendMessage()}
-                    disabled={!inputValue.trim() || isLoading}
-                    className="bg-primary-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    {APP_CONFIG.ui.submitButtonText}
-                  </button>
+                  {isLoading ? (
+                    <button
+                      onClick={handleStopGeneration}
+                      className="bg-red-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-red-700 transition-colors flex items-center gap-2"
+                    >
+                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                        <rect x="6" y="6" width="8" height="8" />
+                      </svg>
+                      Stop
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => handleSendMessage()}
+                      disabled={!inputValue.trim()}
+                      className="bg-primary-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {APP_CONFIG.ui.submitButtonText}
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Sidebar */}
-        {showSamples && APP_CONFIG.ui.showSampleQueries && (
-          <div className="lg:col-span-1">
-            <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6 sticky top-8">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Sample Queries</h3>
-              <div className="space-y-4">
-                {APP_CONFIG.sampleQueries.map((category, idx) => (
-                  <div key={idx}>
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="text-xl">{category.icon}</span>
-                      <h4 className="text-sm font-medium text-gray-700">{category.category}</h4>
-                    </div>
-                    <div className="space-y-1">
-                      {category.queries.map((query, qIdx) => (
-                        <button
-                          key={qIdx}
-                          onClick={() => handleSendMessage(query)}
-                          className="w-full text-left text-xs text-gray-600 hover:text-primary-600 hover:bg-primary-50 rounded px-2 py-1.5 transition-colors"
-                          disabled={isLoading}
+        {/* Sidebar Drawer */}
+        {APP_CONFIG.ui.showSampleQueries && (
+          <>
+            {/* Toggle Button (Always Visible) */}
+            <button
+              onClick={() => setShowSamples(!showSamples)}
+              className={`fixed top-1/2 -translate-y-1/2 z-50 bg-white shadow-lg border border-gray-200 rounded-l-lg p-3 hover:bg-gray-50 transition-all duration-300 ${
+                showSamples ? 'right-[420px]' : 'right-0'
+              }`}
+              aria-label={showSamples ? "Hide sample queries" : "Show sample queries"}
+            >
+              {showSamples ? (
+                <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              ) : (
+                <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              )}
+            </button>
+
+            {/* Drawer Panel */}
+            <div
+              className={`fixed top-0 right-0 h-screen bg-gradient-to-b from-gray-50 to-white shadow-2xl border-l border-gray-200 transition-transform duration-300 ease-in-out z-40 ${
+                showSamples ? 'translate-x-0' : 'translate-x-full'
+              }`}
+              style={{ width: '420px' }}
+            >
+              <div className="h-full overflow-y-auto px-6 py-4" style={{ paddingTop: '100px', paddingBottom: '40px' }}>
+                <div className="mb-6">
+                  <h3 className="text-xl font-bold text-gray-900 mb-1">Sample Queries</h3>
+                  <p className="text-xs text-gray-500">Click any query to use it</p>
+                </div>
+                <div className="space-y-3">
+                  {APP_CONFIG.sampleQueries.map((category, idx) => (
+                    <div key={idx} className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
+                      {/* Category Header - Clickable */}
+                      <button
+                        onClick={() => toggleCategory(idx)}
+                        className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors"
+                      >
+                        <div className="flex items-center gap-3 flex-1">
+                          <div className="text-left flex-1">
+                            <h4 className="text-sm font-semibold text-gray-800">{category.category}</h4>
+                            {category.description && (
+                              <p className="text-xs text-gray-500 mt-0.5">{category.description}</p>
+                            )}
+                          </div>
+                        </div>
+                        <svg
+                          className={`w-5 h-5 text-gray-400 transition-transform duration-200 flex-shrink-0 ${
+                            expandedCategories[idx] ? 'transform rotate-180' : ''
+                          }`}
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
                         >
-                          {query}
-                        </button>
-                      ))}
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </button>
+
+                      {/* Queries - Collapsible */}
+                      {expandedCategories[idx] && (
+                        <div className="px-4 pb-4 pt-0 space-y-1.5 border-t border-gray-100">
+                          {category.queries.map((query, qIdx) => (
+                            <button
+                              key={qIdx}
+                              onClick={() => {
+                                setInputValue(query);
+                                inputRef.current?.focus();
+                              }}
+                              className="w-full text-left text-xs text-gray-700 hover:text-primary-600 hover:bg-primary-50 rounded-md px-3 py-2 transition-all border border-transparent hover:border-primary-200"
+                              disabled={isLoading}
+                            >
+                              {query}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
             </div>
-          </div>
+          </>
         )}
       </div>
     </div>

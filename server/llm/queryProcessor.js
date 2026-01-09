@@ -46,48 +46,37 @@ class QueryProcessor {
 
   /**
    * Process a user query with multi-step support
+   * Note: Conversation chaining removed - each query is independent
    * @param {string} userQuery - The user's natural language query
-   * @param {string} sessionId - Session identifier for conversation context
    * @returns {Object} Complete response with data and metadata
    */
-  async processQuery(userQuery, sessionId = 'default') {
+  async processQuery(userQuery) {
     const conversationManager = getConversationManager();
 
-    // Analyze if query is multi-step or needs context
-    const analysis = await conversationManager.analyzeQuery(userQuery, sessionId);
-
-    // Add user message to conversation history
-    conversationManager.addMessage(sessionId, 'user', userQuery);
+    // Analyze if query is multi-step (no context checking)
+    const analysis = await conversationManager.analyzeQuery(userQuery);
 
     if (analysis.isMultiStep && analysis.steps.length > 1) {
       // Multi-step query processing
       console.log(`\n🔄 Multi-step query detected: ${analysis.steps.length} steps`);
-      return await this.processMultiStepQuery(userQuery, analysis, sessionId);
+      return await this.processMultiStepQuery(userQuery, analysis);
     } else {
-      // Single-step query (may use context)
+      // Single-step query
       const finalQuery = analysis.steps[0].query;
-      const result = await this.processSingleQuery(finalQuery, sessionId);
-
-      // Store result for potential follow-up queries
-      conversationManager.storeIntermediateResult(sessionId, result);
-
-      // Add assistant response to conversation
-      conversationManager.addMessage(sessionId, 'assistant', result.narrative);
-
+      const result = await this.processSingleQuery(finalQuery);
       return result;
     }
   }
 
   /**
    * Process multi-step query with intermediate results
+   * Note: No conversation context stored
    * @param {string} originalQuery - Original user query
    * @param {Object} analysis - Query analysis with steps
-   * @param {string} sessionId - Session identifier
    * @returns {Object} Combined response
    */
-  async processMultiStepQuery(originalQuery, analysis, sessionId) {
+  async processMultiStepQuery(originalQuery, analysis) {
     const startTime = Date.now();
-    const conversationManager = getConversationManager();
     const stepResults = [];
 
     console.log('\n' + '='.repeat(80));
@@ -103,7 +92,7 @@ class QueryProcessor {
       console.log(`   Query: "${step.query}"`);
 
       try {
-        const stepResult = await this.processSingleQuery(step.query, sessionId);
+        const stepResult = await this.processSingleQuery(step.query);
 
         // Check if this step needs clarification
         if (stepResult.needsClarification) {
@@ -130,9 +119,6 @@ class QueryProcessor {
           summary: stepResult.summary,
           success: true,
         });
-
-        // Store intermediate result
-        conversationManager.storeIntermediateResult(sessionId, stepResult);
 
         console.log(`✅ Step ${step.stepNumber} completed: ${stepResult.data.length} results`);
       } catch (error) {
@@ -164,9 +150,6 @@ class QueryProcessor {
       stepResults,
       analysis
     );
-
-    // Add assistant response to conversation
-    conversationManager.addMessage(sessionId, 'assistant', combinedNarrative);
 
     const totalTime = Date.now() - startTime;
     console.log(`\n⏱️  Total multi-step processing time: ${totalTime}ms`);
@@ -302,11 +285,11 @@ Provide a comprehensive executive summary with:
 
   /**
    * Process a single query (used by both single-step and multi-step)
+   * Note: No conversation context used
    * @param {string} userQuery - The user's natural language query
-   * @param {string} sessionId - Session identifier
    * @returns {Object} Complete response with data and metadata
    */
-  async processSingleQuery(userQuery, sessionId = 'default') {
+  async processSingleQuery(userQuery) {
     const startTime = Date.now();
 
     console.log('\n' + '='.repeat(80));
@@ -717,16 +700,15 @@ If the issue persists, please contact support.`;
   }
 
   /**
-   * Clear conversation session
-   * @param {string} sessionId - Session identifier
+   * Clear conversation session (no-op - conversation chaining disabled)
    */
-  clearConversation(sessionId = 'default') {
+  clearConversation() {
     const conversationManager = getConversationManager();
-    conversationManager.clearSession(sessionId);
+    conversationManager.clearSession();
   }
 
   /**
-   * Get conversation statistics
+   * Get conversation statistics (returns disabled status)
    */
   getConversationStats() {
     const conversationManager = getConversationManager();

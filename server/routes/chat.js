@@ -28,7 +28,7 @@ router.use(queryLoggerMiddleware);
 // Apply caching middleware (1 hour TTL)
 router.post('/', cacheMiddleware(3600), async (req, res) => {
   try {
-    const { message, mode, sessionId } = req.body;
+    const { message, mode } = req.body;
 
     if (!message || typeof message !== 'string' || message.trim().length === 0) {
       return res.status(400).json({
@@ -37,12 +37,8 @@ router.post('/', cacheMiddleware(3600), async (req, res) => {
       });
     }
 
-    // Use sessionId for conversation context (default to 'default' if not provided)
-    const session = sessionId || 'default';
-
     console.log(`\n📨 Received query: "${message}"`);
     console.log(`🔧 Mode: ${mode || 'llm-driven'}`);
-    console.log(`👤 Session: ${session}`);
 
     // Ensure query processor is initialized
     if (!queryProcessor) {
@@ -50,13 +46,12 @@ router.post('/', cacheMiddleware(3600), async (req, res) => {
       await queryProcessor.initialize();
     }
 
-    // Process query with multi-step support and conversation context
-    const result = await queryProcessor.processQuery(message, session);
+    // Process query with multi-step support (no conversation context)
+    const result = await queryProcessor.processQuery(message);
 
     // Add mode to response
     result.mode = mode || 'llm-driven';
     result.timestamp = new Date().toISOString();
-    result.sessionId = session;
 
     res.json(result);
 
@@ -78,8 +73,7 @@ router.get('/health', (req, res) => {
     service: 'Social Media Command Center API',
     mode: 'llm-driven',
     features: [
-      'Multi-Step Query Support ✨ LATEST',
-      'Conversation Context & Memory ✨ LATEST',
+      'Multi-Step Query Support',
       'LLM-Driven Dynamic Filter Generation',
       'Intelligent Query Understanding',
       'Two-Stage LLM Processing',
@@ -96,7 +90,7 @@ router.get('/health', (req, res) => {
       filteringEngine: 'LLM + Node.js',
       noRegexPatterns: true,
       multiStepSupport: true,
-      conversationMemory: true
+      conversationMemory: false
     }
   });
 });
@@ -159,31 +153,13 @@ router.get('/metadata', async (req, res) => {
   }
 });
 
-// Conversation management endpoints
+// Conversation management endpoints (deprecated - conversation chaining removed)
 router.post('/conversation/clear', (req, res) => {
-  try {
-    const { sessionId } = req.body;
-    const session = sessionId || 'default';
-
-    if (!queryProcessor) {
-      return res.status(500).json({
-        success: false,
-        error: 'Query processor not initialized'
-      });
-    }
-
-    queryProcessor.clearConversation(session);
-    res.json({
-      success: true,
-      message: `Conversation session '${session}' cleared`,
-      sessionId: session
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
-  }
+  res.json({
+    success: true,
+    message: 'Conversation chaining is disabled - each query is independent',
+    note: 'This endpoint is deprecated and has no effect'
+  });
 });
 
 router.get('/conversation/stats', (req, res) => {
