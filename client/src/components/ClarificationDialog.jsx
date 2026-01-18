@@ -31,9 +31,10 @@ function ClarificationDialog({ clarification, onSelect, onCancel, isOpen }) {
   const mainQuestion = clarification.question || clarification.reason || clarification.clarificationNeeded;
 
   // Get options (handle multiple formats)
+  // CRITICAL: Check for non-empty arrays (empty array [] is truthy but has no options)
   let options = [];
 
-  if (clarification.options && Array.isArray(clarification.options)) {
+  if (clarification.options && Array.isArray(clarification.options) && clarification.options.length > 0) {
     console.log('✅ Using clarification.options');
     // V4.2 simple format or V4.3 options array
     options = clarification.options.map(opt => {
@@ -48,7 +49,7 @@ function ClarificationDialog({ clarification, onSelect, onCancel, isOpen }) {
       }
       return { label: 'Unknown option' };
     });
-  } else if (clarification.alternatives && Array.isArray(clarification.alternatives)) {
+  } else if (clarification.alternatives && Array.isArray(clarification.alternatives) && clarification.alternatives.length > 0) {
     console.log('✅ Using clarification.alternatives');
     // V4.3 alternatives format
     options = clarification.alternatives.map(alt => ({
@@ -56,7 +57,7 @@ function ClarificationDialog({ clarification, onSelect, onCancel, isOpen }) {
       description: alt.description,
       reasoning: alt.reasoning
     }));
-  } else if (clarification.suggestedOptions && Array.isArray(clarification.suggestedOptions)) {
+  } else if (clarification.suggestedOptions && Array.isArray(clarification.suggestedOptions) && clarification.suggestedOptions.length > 0) {
     console.log('✅ Using clarification.suggestedOptions');
     // V4.2 suggestedOptions format
     options = clarification.suggestedOptions.map(opt => {
@@ -70,7 +71,7 @@ function ClarificationDialog({ clarification, onSelect, onCancel, isOpen }) {
       }
       return { label: 'Unknown option' };
     });
-  } else if (clarification.suggestedQueries && Array.isArray(clarification.suggestedQueries)) {
+  } else if (clarification.suggestedQueries && Array.isArray(clarification.suggestedQueries) && clarification.suggestedQueries.length > 0) {
     console.log('✅ Using clarification.suggestedQueries');
     // V4.2 suggestedQueries format (for out-of-scope queries)
     options = clarification.suggestedQueries.map(sq => ({

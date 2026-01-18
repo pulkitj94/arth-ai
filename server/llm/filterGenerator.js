@@ -1291,6 +1291,41 @@ Which metric would you like to analyze?`,
       };
     }
 
+    // V4.7 ADDITION: Check for content strategy/recommendations queries
+    const strategyPattern = /\b(content\s+)?strategy|recommend(ation)?s?\s+(for|about)?|what\s+should\s+(we|i)\s+(do|post|focus)/i;
+    if (strategyPattern.test(query)) {
+      return {
+        valid: false,
+        needsClarification: true,
+        reason: 'I can provide data-driven insights to inform your content strategy.',
+        explanation: 'While I cannot create a content strategy for you, I can analyze your historical performance data to provide actionable insights. Choose what aspect you\'d like to explore:',
+        alternatives: [
+          {
+            option: 'Which content types perform best across platforms?',
+            description: 'Compare image, video, carousel performance'
+          },
+          {
+            option: 'Which platform has the highest engagement rate?',
+            description: 'Find where your audience is most active'
+          },
+          {
+            option: 'Show me top 10 performing posts for inspiration',
+            description: 'Learn from your best content'
+          },
+          {
+            option: 'Compare engagement across all platforms',
+            description: 'See overall platform performance comparison'
+          }
+        ],
+        suggestedQueries: [
+          'Which content type performs best on Instagram?',
+          'Compare engagement rates across all platforms',
+          'Show me top 10 posts by engagement rate',
+          'What media type has highest average likes?'
+        ]
+      };
+    }
+
     // V4.6 ADDITION: Check for "common attributes" pattern detection queries
     const patternDetectionPattern = /\bcommon\s+(attribute(s)?|pattern(s)?|feature(s)?|characteristic(s)?)\b|\bwhat.*\bshare\b|\bsimilar(ities|ity)\b/i;
     if (patternDetectionPattern.test(query)) {

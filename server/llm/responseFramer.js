@@ -53,6 +53,7 @@ CRITICAL INSTRUCTIONS:
 - If you mention a metric, it MUST come directly from the data provided
 - Copy numbers exactly as they appear (e.g., if data shows "7161", write "7,161" or "7161", not a different number)
 - If a field is missing or unclear, acknowledge it rather than inventing data
+- IMPORTANT: Dates in the data are in DD-MM-YYYY format (e.g., "07-11-2025" means November 7th, 2025, NOT July 11th). Always interpret dates correctly when analyzing data.
 
 ORIGINAL USER QUERY:
 "${userQuery}"

@@ -338,7 +338,8 @@ Provide a comprehensive executive summary with:
           clarification: {
             question: filterSpec.clarificationNeeded,
             options: filterSpec.alternatives || filterSpec.suggestedOptions || [],
-            reason: filterSpec.interpretation,
+            suggestedQueries: filterSpec.suggestedQueries || [],
+            reason: filterSpec.interpretation || filterSpec.reason,
             explanation: filterSpec.explanation // Pass through explanation for educational content
           },
           message: 'This query is ambiguous and needs clarification',
