@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import GaugeChart from 'react-gauge-chart';
 import {
     ScatterChart, Scatter, XAxis, YAxis, ZAxis,
-    CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Cell, Text
+    CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Cell
 } from 'recharts';
 import SentimentTrend from './SentimentTrend';
 import ReplyModal from './ReplyModal';
@@ -21,6 +21,7 @@ const SentimentDashboard = () => {
     const [generatingReplyIndex, setGeneratingReplyIndex] = useState(null);
     const [dismissedAlerts, setDismissedAlerts] = useState([]);
 
+    // Fetch all dashboard data from Node.js API
     const fetchData = async (keepLoadingState = false) => {
         try {
             if (!keepLoadingState) setLoading(true);
@@ -37,9 +38,16 @@ const SentimentDashboard = () => {
             const history = await resHistory.json();
             setHistoryData(history);
 
-            const resROI = await fetch('http://localhost:3001/api/analytics/roi-matrix');
-            const roiJson = await resROI.json();
-            setRoiData(roiJson);
+            // Fetch ROI Data if endpoint exists (handling potential absence gracefully)
+            try {
+                const resROI = await fetch('http://localhost:3001/api/analytics/roi-matrix');
+                if (resROI.ok) {
+                    const roiJson = await resROI.json();
+                    setRoiData(roiJson);
+                }
+            } catch (e) {
+                console.warn("ROI Matrix data fetch failed", e);
+            }
 
             setLastUpdated(new Date().toLocaleTimeString());
             setLoading(false);
@@ -55,17 +63,22 @@ const SentimentDashboard = () => {
         return () => clearInterval(interval);
     }, []);
 
+    // Manual Scenario Trigger
     const triggerSimulation = async (scenarioType) => {
         try {
             setIsSimulating(true);
             setLoading(true);
+
             const res = await fetch('http://localhost:3001/api/simulate/trigger', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ scenario: scenarioType })
             });
+
             const data = await res.json();
+
             if (data.success) {
+                // Wait 6 seconds for Python to finish AI labeling
                 setTimeout(() => {
                     fetchData(false);
                     setIsSimulating(false);
@@ -75,15 +88,23 @@ const SentimentDashboard = () => {
                 setLoading(false);
             }
         } catch (err) {
+            console.error("Simulation failed", err);
             setIsSimulating(false);
             setLoading(false);
+            alert("Failed to trigger simulation. Please try again.");
         }
     };
 
     const handleRefresh = async () => {
-        setLoading(true);
-        await fetch('http://localhost:3001/api/sentiment/refresh', { method: 'POST' });
-        setTimeout(() => fetchData(false), 6000);
+        try {
+            setLoading(true);
+            await fetch('http://localhost:3001/api/sentiment/refresh', { method: 'POST' });
+            setTimeout(() => fetchData(false), 6000);
+        } catch (err) {
+            console.error("Refresh failed", err);
+            setLoading(false);
+            alert("Failed to refresh. Please try again.");
+        }
     };
 
     const generateAIReply = async (comment, platform, index) => {
@@ -96,34 +117,21 @@ const SentimentDashboard = () => {
             });
             const data = await res.json();
 
-            // Clean up the reply by removing markdown formatting
+            // Clean up reply logic preserved from previous implementation
             let cleanReply = data.reply || '';
-
-            // Remove markdown headers (##, ###, etc.)
-            cleanReply = cleanReply.replace(/^#+\s+/gm, '');
-
-            // Remove markdown bold (**text** or __text__)
-            cleanReply = cleanReply.replace(/\*\*(.+?)\*\*/g, '$1');
-            cleanReply = cleanReply.replace(/__(.+?)__/g, '$1');
-
-            // Remove markdown italic (*text* or _text_)
-            cleanReply = cleanReply.replace(/\*(.+?)\*/g, '$1');
-            cleanReply = cleanReply.replace(/_(.+?)_/g, '$1');
-
-            // Remove bullet points and convert to numbered list or clean text
-            cleanReply = cleanReply.replace(/^[\s-]*[-*+]\s+/gm, '• ');
-
-            // Remove extra line breaks (more than 2 consecutive)
-            cleanReply = cleanReply.replace(/\n{3,}/g, '\n\n');
-
-            // Trim whitespace
-            cleanReply = cleanReply.trim();
+            cleanReply = cleanReply.replace(/^#+\s+/gm, '')
+                .replace(/\*\*(.+?)\*\*/g, '$1')
+                .replace(/__(.+?)__/g, '$1')
+                .replace(/\*(.+?)\*/g, '$1')
+                .replace(/_(.+?)_/g, '$1')
+                .replace(/^[\s-]*[-*+]\s+/gm, '• ')
+                .replace(/\n{3,}/g, '\n\n')
+                .trim();
 
             setCurrentReply({ reply: cleanReply, comment, platform });
             setReplyModalOpen(true);
-        } catch (error) {
-            console.error('Failed to generate reply:', error);
-            alert('Failed to generate reply. Please try again.');
+        } catch (err) {
+            alert("Failed to generate reply. Please try again.");
         } finally {
             setGeneratingReplyIndex(null);
         }
@@ -134,11 +142,16 @@ const SentimentDashboard = () => {
     };
 
     if (loading && sentimentData.length === 0) {
-        return <div style={{ padding: '40px', textAlign: 'center' }}>🔄 Loading AI Insights...</div>;
+        return (
+            <div className="flex flex-col items-center justify-center p-10 h-64">
+                <div className="text-4xl mb-4">🔄</div>
+                <div className="text-lg text-gray-500 font-medium">Loading AI Insights...</div>
+            </div>
+        );
     }
 
     return (
-        <div style={{ padding: '20px', fontFamily: 'Arial, sans-serif', maxWidth: '1200px', margin: '0 auto', position: 'relative' }}>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 relative font-sans">
             <ReplyModal
                 isOpen={replyModalOpen}
                 onClose={() => setReplyModalOpen(false)}
@@ -147,415 +160,273 @@ const SentimentDashboard = () => {
                 platform={currentReply.platform}
             />
 
+            {/* Loading Overlay */}
             {loading && sentimentData.length > 0 && (
-                <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0, 0, 0, 0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
-                    <div style={{ backgroundColor: 'white', padding: '40px', borderRadius: '20px', textAlign: 'center' }}>
-                        <div style={{ width: '50px', height: '50px', border: '5px solid #f3f3f3', borderTop: '5px solid #007bff', borderRadius: '50%', margin: '0 auto 20px', animation: 'spin 1s linear infinite' }}></div>
-                        <h3 style={{ margin: 0 }}>🤖 AI Processing...</h3>
+                <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+                    <div className="bg-white p-10 rounded-2xl text-center shadow-2xl max-w-sm w-full mx-4">
+                        <div className="w-16 h-16 border-4 border-gray-100 border-t-brand rounded-full mx-auto mb-6 animate-spin"></div>
+                        <div className="text-xl font-bold text-gray-800 mb-2">
+                            🤖 AI is Processing...
+                        </div>
+                        <div className="text-sm text-gray-500">
+                            Analyzing sentiment and updating dashboard
+                        </div>
                     </div>
-                    <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
                 </div>
             )}
 
-            {/* HEADER */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '30px' }}>
+            {/* --- HEADER --- */}
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
                 <div>
-                    <h2 style={{ margin: 0 }}>🌍 Platform Sentiment Health</h2>
-                    <p style={{ fontSize: '12px', color: '#888' }}>Last Sync: {lastUpdated}</p>
+                    <h2 className="text-2xl font-bold text-brand flex items-center gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-brand"><path d="M19 14c1.49-1.28 3.6-1.28 5.14 0 1.55 1.28 1.55 3.36 0 4.64-1.54 1.28-3.65 1.28-5.14 0-1.49-1.28-1.55-3.36 0-4.64C20.5 12.72 22.5 12.72 24 14" /><path d="M1 14c1.49-1.28 3.6-1.28 5.14 0 1.55 1.28 1.55 3.36 0 4.64-1.55 1.28-3.6 1.28-5.14 0-1.49-1.28-1.55-3.36 0-4.64C2.5 12.72 4.6 12.72 6 14" /><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 14c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4z" /></svg>
+                        Platform Sentiment Health
+                    </h2>
+                    <p className="text-sm text-gray-500 mt-1">Last Sync: {lastUpdated}</p>
                 </div>
-                <div style={{ display: 'flex', gap: '10px' }}>
-                    <button onClick={() => triggerSimulation('normal')} style={{ padding: '10px 15px', backgroundColor: '#28a745', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }}>📈 Normal</button>
-                    <button onClick={() => triggerSimulation('viral')} style={{ padding: '10px 15px', backgroundColor: '#6f42c1', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }}>🚀 Viral</button>
-                    <button onClick={() => triggerSimulation('crisis')} style={{ padding: '10px 15px', backgroundColor: '#dc3545', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }}>🚨 Crisis</button>
-                    <button onClick={handleRefresh} style={{ padding: '10px 15px', backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }}>🔄 Refresh</button>
+                <div className="flex flex-wrap gap-3">
+                    <button
+                        onClick={() => triggerSimulation('normal')}
+                        disabled={isSimulating}
+                        className={`px-4 py-2 border border-green-600 text-green-700 bg-green-50 hover:bg-green-100 rounded-lg shadow-sm font-medium transition-colors flex items-center gap-2 ${isSimulating ? 'opacity-60' : ''}`}
+                    >
+                        📈 Normal Growth
+                    </button>
+                    <button
+                        onClick={() => triggerSimulation('viral')}
+                        disabled={isSimulating}
+                        className={`px-4 py-2 border border-purple-600 text-purple-700 bg-purple-50 hover:bg-purple-100 rounded-lg shadow-sm font-medium transition-colors flex items-center gap-2 ${isSimulating ? 'opacity-60' : ''}`}
+                    >
+                        🚀 Viral Growth
+                    </button>
+                    <button
+                        onClick={() => triggerSimulation('crisis')}
+                        disabled={isSimulating}
+                        className={`px-4 py-2 border border-red-600 text-red-700 bg-red-50 hover:bg-red-100 rounded-lg shadow-sm font-medium transition-colors flex items-center gap-2 ${isSimulating ? 'opacity-60' : ''}`}
+                    >
+                        🚨 Trigger Crisis
+                    </button>
+                    <button
+                        onClick={handleRefresh}
+                        className="px-4 py-2 border border-brand text-brand-dark bg-brand/10 hover:bg-brand/20 rounded-lg shadow-sm font-medium transition-colors flex items-center gap-2"
+                    >
+                        🔄 Refresh AI
+                    </button>
                 </div>
             </div>
 
-            {/* PLATFORM HEALTH GAUGES - IMPROVED */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px', marginBottom: '30px' }}>
-                {sentimentData.map((p) => {
-                    const healthStatus = p.health_score >= 70 ? 'Healthy' : p.health_score >= 50 ? 'Moderate' : 'Critical';
-                    const statusColor = p.health_score >= 70 ? '#2ecc71' : p.health_score >= 50 ? '#f39c12' : '#e74c3c';
+            {/* --- SECTION 1: GAUGE GRID --- */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+                {sentimentData.map((platform) => {
+                    const healthStatus = platform.health_score >= 70 ? 'Strong' : platform.health_score >= 40 ? 'Moderate' : 'Critical';
+                    const statusColorClass = platform.health_score >= 70 ? 'text-green-600' : platform.health_score >= 40 ? 'text-yellow-600' : 'text-red-600';
+                    const bgStatusClass = platform.health_score >= 70 ? 'bg-green-50 text-green-700' : platform.health_score >= 40 ? 'bg-yellow-50 text-yellow-700' : 'bg-red-50 text-red-700';
 
                     return (
-                        <div key={p.platform} style={{
-                            background: 'white',
-                            padding: '24px',
-                            borderRadius: '15px',
-                            boxShadow: '0 4px 15px rgba(0,0,0,0.08)',
-                            border: '1px solid #f0f0f0',
-                            transition: 'transform 0.2s, box-shadow 0.2s'
-                        }}>
-                            {/* Platform Header */}
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-                                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: '#1a1a1a', textTransform: 'capitalize' }}>
-                                    {p.platform}
-                                </h3>
-                                <div style={{
-                                    padding: '4px 12px',
-                                    backgroundColor: `${statusColor}15`,
-                                    borderRadius: '20px',
-                                    fontSize: '11px',
-                                    fontWeight: '700',
-                                    color: statusColor
-                                }}>
-                                    {healthStatus}
+                        <div key={platform.platform} className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 text-center flex flex-col items-center">
+                            <h3 className="text-lg font-bold text-navy capitalize mb-4">{platform.platform}</h3>
+                            <div className="flex flex-col items-center w-full">
+                                <div className="w-full max-w-[200px] -mb-4">
+                                    <GaugeChart
+                                        id={`gauge-${platform.platform}`}
+                                        nrOfLevels={3}
+                                        percent={platform.health_score / 100}
+                                        colors={["#EF4444", "#F59E0B", "#10B981"]}
+                                        arcWidth={0.15}
+                                        hideText={true}
+                                    />
+                                </div>
+                                <div className="text-center pt-4 pb-2">
+                                    <span className="text-2xl font-bold text-navy">
+                                        {platform.health_score}%
+                                    </span>
                                 </div>
                             </div>
 
-                            {/* Gauge Chart */}
-                            <div style={{ marginBottom: '15px' }}>
-                                <GaugeChart
-                                    id={`g-${p.platform}`}
-                                    nrOfLevels={20}
-                                    percent={p.health_score / 100}
-                                    colors={["#e74c3c", "#f39c12", "#2ecc71"]}
-                                    arcWidth={0.25}
-                                    textColor="#333"
-                                    needleColor="#333"
-                                    needleBaseColor="#333"
-                                    hideText={true}
-                                />
-                            </div>
-
-                            {/* Health Score */}
-                            <div style={{ textAlign: 'center', marginBottom: '16px' }}>
-                                <div style={{ fontSize: '32px', fontWeight: 'bold', color: statusColor, marginBottom: '4px' }}>
-                                    {p.health_score}%
+                            <div className="mt-4 text-center w-full">
+                                <div className={`inline-block px-3 py-1 rounded-full text-xs font-bold ${bgStatusClass} mb-3`}>
+                                    Health: {healthStatus}
                                 </div>
-                                <div style={{ fontSize: '12px', color: '#888', fontWeight: '600' }}>
-                                    Sentiment Health Score
-                                </div>
-                            </div>
 
-                            {/* Sentiment Breakdown */}
-                            <div style={{
-                                display: 'grid',
-                                gridTemplateColumns: '1fr 1fr 1fr',
-                                gap: '8px',
-                                padding: '12px',
-                                backgroundColor: '#f8f9fa',
-                                borderRadius: '10px'
-                            }}>
-                                <div style={{ textAlign: 'center' }}>
-                                    <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#2ecc71', marginBottom: '2px' }}>
-                                        {p.distribution.positive}%
+                                {/* Sentiment Breakdown */}
+                                <div className="grid grid-cols-3 gap-1 text-[10px] border-t border-gray-100 pt-3">
+                                    <div className="flex flex-col items-center">
+                                        <div className="font-bold text-green-600 text-sm">{platform.distribution.positive}%</div>
+                                        <div className="text-gray-400 uppercase tracking-wide">Positive</div>
                                     </div>
-                                    <div style={{ fontSize: '10px', color: '#666', fontWeight: '600' }}>Positive</div>
-                                </div>
-                                <div style={{ textAlign: 'center', borderLeft: '1px solid #e0e0e0', borderRight: '1px solid #e0e0e0' }}>
-                                    <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#95a5a6', marginBottom: '2px' }}>
-                                        {p.distribution.neutral}%
+                                    <div className="border-l border-r border-gray-100 flex flex-col items-center">
+                                        <div className="font-bold text-gray-500 text-sm">{platform.distribution.neutral}%</div>
+                                        <div className="text-gray-400 uppercase tracking-wide">Neutral</div>
                                     </div>
-                                    <div style={{ fontSize: '10px', color: '#666', fontWeight: '600' }}>Neutral</div>
-                                </div>
-                                <div style={{ textAlign: 'center' }}>
-                                    <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#e74c3c', marginBottom: '2px' }}>
-                                        {p.distribution.negative}%
+                                    <div className="flex flex-col items-center">
+                                        <div className="font-bold text-red-500 text-sm">{platform.distribution.negative}%</div>
+                                        <div className="text-gray-400 uppercase tracking-wide">Negative</div>
                                     </div>
-                                    <div style={{ fontSize: '10px', color: '#666', fontWeight: '600' }}>Negative</div>
                                 </div>
-                            </div>
-
-                            {/* Total Comments */}
-                            <div style={{
-                                marginTop: '12px',
-                                padding: '10px',
-                                backgroundColor: '#fff',
-                                borderRadius: '8px',
-                                border: '1px solid #e9ecef',
-                                display: 'flex',
-                                justifyContent: 'space-between',
-                                alignItems: 'center'
-                            }}>
-                                <span style={{ fontSize: '12px', color: '#666', fontWeight: '600' }}>Total Comments:</span>
-                                <span style={{ fontSize: '14px', color: '#333', fontWeight: 'bold' }}>{p.total_comments.toLocaleString()}</span>
                             </div>
                         </div>
                     );
                 })}
             </div>
 
-            {/* TREND */}
-            <div style={{ marginBottom: '30px' }}>
+            {/* --- SECTION 2: TREND CHART --- */}
+            <div className="mb-8">
                 <SentimentTrend data={historyData} />
             </div>
 
-            {/* AD EFFICIENCY MATRIX - REDESIGNED */}
-            <div style={{ background: 'white', padding: '30px', borderRadius: '15px', marginBottom: '30px', boxShadow: '0 4px 15px rgba(0,0,0,0.05)', border: '1px solid #eee' }}>
-                {/* Header with Filter */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
-                    <div>
-                        <h3 style={{ margin: '0 0 10px 0', fontSize: '20px', color: '#1a1a1a' }}>📊 Ad Campaign Performance Matrix</h3>
-                        <p style={{ margin: 0, fontSize: '13px', color: '#666' }}>Analyze campaign efficiency by spend vs. sentiment</p>
-                    </div>
-
-                    {/* Platform Filter */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <label style={{ fontSize: '13px', fontWeight: '600', color: '#555' }}>Platform:</label>
-                        <select
-                            value={selectedPlatform}
-                            onChange={(e) => setSelectedPlatform(e.target.value)}
-                            style={{
-                                padding: '10px 16px',
-                                borderRadius: '8px',
-                                border: '2px solid #e0e0e0',
-                                backgroundColor: 'white',
-                                fontSize: '14px',
-                                fontWeight: '600',
-                                cursor: 'pointer',
-                                color: '#333',
-                                outline: 'none',
-                                transition: 'border-color 0.2s'
-                            }}
-                            onMouseEnter={(e) => e.target.style.borderColor = '#007bff'}
-                            onMouseLeave={(e) => e.target.style.borderColor = '#e0e0e0'}
-                        >
-                            <option value="All Platforms">All Platforms</option>
-                            <option value="Facebook Ads">Facebook Ads</option>
-                            <option value="Instagram Ads">Instagram Ads</option>
-                            <option value="Google Ads">Google Ads</option>
-                        </select>
-                    </div>
-                </div>
-
-                {/* Info Card */}
-                <div style={{ backgroundColor: '#f8f9fa', padding: '16px', borderRadius: '10px', marginBottom: '20px', border: '1px solid #e9ecef' }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', fontSize: '13px' }}>
+            {/* --- SECTION 3: AD EFFICIENCY MATRIX (PRESERVED) --- */}
+            {roiData && roiData.length > 0 && (
+                <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 mb-8">
+                    <div className="flex justify-between items-start mb-6">
                         <div>
-                            <p style={{ margin: '0 0 8px 0', fontWeight: '600', color: '#333' }}>How to read this chart:</p>
-                            <ul style={{ margin: 0, paddingLeft: '20px', color: '#555', lineHeight: '1.8' }}>
-                                <li><strong>X-axis:</strong> Total ad spend per campaign</li>
-                                <li><strong>Y-axis:</strong> Net sentiment score (-100 to +100)</li>
-                                <li><strong>Bubble size:</strong> Engagement volume</li>
-                            </ul>
+                            <h3 className="text-xl font-bold text-navy mb-1">📊 Ad Campaign Performance Matrix</h3>
+                            <p className="text-sm text-gray-500">Analyze campaign efficiency by spend vs. sentiment</p>
                         </div>
-                        <div>
-                            <p style={{ margin: '0 0 8px 0', fontWeight: '600', color: '#333' }}>Quadrants explained:</p>
-                            <ul style={{ margin: 0, paddingLeft: '20px', color: '#555', lineHeight: '1.8' }}>
-                                <li><span style={{ color: '#2ecc71', fontWeight: 'bold' }}>●</span> <strong>Top Left:</strong> Low spend, high sentiment → Scale these!</li>
-                                <li><span style={{ color: '#27ae60', fontWeight: 'bold' }}>●</span> <strong>Top Right:</strong> High spend, high sentiment → Keep investing</li>
-                                <li><span style={{ color: '#f39c12', fontWeight: 'bold' }}>●</span> <strong>Bottom Left:</strong> Low spend, low sentiment → Pause & optimize</li>
-                                <li><span style={{ color: '#e74c3c', fontWeight: 'bold' }}>●</span> <strong>Bottom Right:</strong> High spend, low sentiment → URGENT: Stop or pivot</li>
-                            </ul>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Chart */}
-                <div style={{ height: '450px', width: '100%', position: 'relative' }}>
-                    <ResponsiveContainer>
-                        <ScatterChart margin={{ top: 20, right: 30, bottom: 50, left: 50 }}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
-
-                            <XAxis
-                                type="number"
-                                dataKey="spend"
-                                name="Spend"
-                                unit="$"
-                                tickFormatter={(value) => `$${(value/1000).toFixed(0)}k`}
-                                label={{ value: 'Ad Spend ($)', position: 'insideBottom', offset: -10, style: { fontSize: '14px', fontWeight: 'bold', fill: '#555' } }}
-                                tick={{ fontSize: 12, fill: '#666' }}
-                            />
-
-                            <YAxis
-                                type="number"
-                                dataKey="sentiment"
-                                name="Sentiment"
-                                domain={[-100, 100]}
-                                tickFormatter={(value) => `${value}%`}
-                                label={{ value: 'Net Sentiment Score', angle: -90, position: 'insideLeft', style: { fontSize: '14px', fontWeight: 'bold', fill: '#555' } }}
-                                tick={{ fontSize: 12, fill: '#666' }}
-                            />
-
-                            <ZAxis type="number" dataKey="volume" range={[100, 1000]} />
-
-                            <Tooltip
-                                cursor={{ strokeDasharray: '3 3' }}
-                                content={({ active, payload }) => {
-                                    if (active && payload && payload.length) {
-                                        const d = payload[0].payload;
-                                        const quadrant = d.sentiment > 0
-                                            ? (d.spend > 60000 ? 'Brand Powerhouse' : 'Top Performer - Scale Up!')
-                                            : (d.spend > 60000 ? 'DANGER ZONE - Pivot Now!' : 'Creative Misfire - Optimize');
-
-                                        const quadrantColor = d.sentiment > 0
-                                            ? (d.spend > 60000 ? '#27ae60' : '#2ecc71')
-                                            : (d.spend > 60000 ? '#e74c3c' : '#f39c12');
-
-                                        return (
-                                            <div style={{ backgroundColor: '#fff', padding: '14px', border: `2px solid ${quadrantColor}`, borderRadius: '10px', maxWidth: '300px', boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>
-                                                <p style={{ fontWeight: 'bold', margin: '0 0 10px 0', fontSize: '14px', color: '#333' }}>{d.name}</p>
-                                                <div style={{ padding: '8px', backgroundColor: quadrantColor, borderRadius: '6px', marginBottom: '10px' }}>
-                                                    <p style={{ margin: 0, fontSize: '11px', fontWeight: 'bold', color: 'white', textAlign: 'center' }}>{quadrant}</p>
-                                                </div>
-                                                <p style={{ margin: '0 0 4px 0', fontSize: '12px', color: '#555' }}><strong>Platform:</strong> {d.platform}</p>
-                                                <p style={{ margin: '0 0 4px 0', fontSize: '12px', color: '#555' }}><strong>Spend:</strong> ${d.spend.toLocaleString()}</p>
-                                                <p style={{ margin: '0 0 4px 0', fontSize: '12px', fontWeight: 'bold', color: d.sentiment >= 0 ? '#2ecc71' : '#e74c3c' }}>
-                                                    <strong>Sentiment:</strong> {d.sentiment > 0 ? '+' : ''}{d.sentiment}%
-                                                </p>
-                                                <p style={{ margin: '0 0 4px 0', fontSize: '12px', color: '#555' }}><strong>Clicks:</strong> {d.clicks.toLocaleString()}</p>
-                                                <p style={{ margin: '0', fontSize: '12px', color: '#555' }}><strong>Engagement:</strong> {d.volume} interactions</p>
-                                            </div>
-                                        );
-                                    }
-                                    return null;
-                                }}
-                            />
-
-                            {/* Quadrant Lines */}
-                            <ReferenceLine y={0} stroke="#333" strokeWidth={2} strokeDasharray="5 5" />
-                            <ReferenceLine x={60000} stroke="#666" strokeWidth={1} strokeDasharray="5 5" />
-
-                            {/* Sentiment Threshold Lines */}
-                            <ReferenceLine y={20} stroke="#2ecc71" strokeWidth={1} strokeDasharray="3 3" strokeOpacity={0.5} />
-                            <ReferenceLine y={-20} stroke="#e74c3c" strokeWidth={1} strokeDasharray="3 3" strokeOpacity={0.5} />
-
-                            <Scatter
-                                name="Campaigns"
-                                data={selectedPlatform === 'All Platforms' ? roiData : roiData.filter(item => item.platform === selectedPlatform)}
+                        <div className="flex items-center gap-2">
+                            <label className="text-sm font-semibold text-gray-600">Platform:</label>
+                            <select
+                                value={selectedPlatform}
+                                onChange={(e) => setSelectedPlatform(e.target.value)}
+                                className="px-3 py-2 rounded-lg border border-gray-300 text-sm font-medium focus:ring-2 focus:ring-brand focus:border-transparent outline-none"
                             >
-                                {(selectedPlatform === 'All Platforms' ? roiData : roiData.filter(item => item.platform === selectedPlatform)).map((entry, index) => (
-                                    <Cell
-                                        key={`cell-${index}`}
-                                        fill={entry.sentiment > 0 ? (entry.spend > 60000 ? '#27ae60' : '#2ecc71') : (entry.spend > 60000 ? '#e74c3c' : '#f39c12')}
-                                        stroke="#fff"
-                                        strokeWidth={2}
-                                    />
-                                ))}
-                            </Scatter>
-                        </ScatterChart>
-                    </ResponsiveContainer>
-                </div>
-
-                {/* Legend and Stats */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '20px', paddingTop: '20px', borderTop: '1px solid #e9ecef' }}>
-                    <div style={{ fontSize: '13px', color: '#666', fontWeight: '600' }}>
-                        Showing {selectedPlatform === 'All Platforms' ? roiData.length : roiData.filter(item => item.platform === selectedPlatform).length} campaigns
-                    </div>
-                    <div style={{ display: 'flex', gap: '20px', fontSize: '12px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <div style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#2ecc71' }}></div>
-                            <span style={{ fontWeight: '600', color: '#555' }}>Scale Budget</span>
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <div style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#27ae60' }}></div>
-                            <span style={{ fontWeight: '600', color: '#555' }}>Keep Investing</span>
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <div style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#f39c12' }}></div>
-                            <span style={{ fontWeight: '600', color: '#555' }}>Optimize Creative</span>
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <div style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#e74c3c' }}></div>
-                            <span style={{ fontWeight: '600', color: '#555' }}>Stop/Pivot</span>
+                                <option value="All Platforms">All Platforms</option>
+                                <option value="Facebook Ads">Facebook Ads</option>
+                                <option value="Instagram Ads">Instagram Ads</option>
+                                <option value="Google Ads">Google Ads</option>
+                            </select>
                         </div>
                     </div>
-                </div>
-            </div>
 
-            {/* ACTION CENTER */}
-            <div style={{ background: '#fff', padding: '25px', borderRadius: '15px', border: '1px solid #ffebee', boxShadow: '0 4px 15px rgba(0,0,0,0.05)' }}>
-                <h3 style={{ color: '#d32f2f', marginTop: 0, marginBottom: '20px' }}>⚠️ Urgent Attention Required</h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <div className="bg-gray-50 rounded-lg p-4 mb-6 border border-gray-100">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs text-gray-600">
+                            <div>
+                                <strong className="block text-gray-800 mb-2">How to read:</strong>
+                                <ul className="space-y-1 list-disc list-inside">
+                                    <li>X-axis: Total Spend</li>
+                                    <li>Y-axis: Net Sentiment (-100 to +100)</li>
+                                    <li>Bubble size: Engagement Volume</li>
+                                </ul>
+                            </div>
+                            <div>
+                                <strong className="block text-gray-800 mb-2">Quadrants:</strong>
+                                <ul className="space-y-1">
+                                    <li><span className="text-green-600 font-bold">●</span> Top Left: High Sentiment/Low Spend (Scale)</li>
+                                    <li><span className="text-emerald-600 font-bold">●</span> Top Right: High Sentiment/High Spend (Keep)</li>
+                                    <li><span className="text-orange-500 font-bold">●</span> Bottom Left: Low Sentiment/Low Spend (Optimize)</li>
+                                    <li><span className="text-red-500 font-bold">●</span> Bottom Right: Low Sentiment/High Spend (Stop)</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="h-96 w-full">
+                        <ResponsiveContainer>
+                            <ScatterChart margin={{ top: 20, right: 30, bottom: 50, left: 10 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                                <XAxis
+                                    type="number"
+                                    dataKey="spend"
+                                    name="Spend"
+                                    tickFormatter={(val) => `₹${(val / 1000).toFixed(0)}k`}
+                                    tick={{ fontSize: 12, fill: '#888' }}
+                                    tickMargin={10}
+                                    label={{ value: 'Total Spend (₹)', position: 'insideBottom', offset: -10, fill: '#666', fontSize: 13 }}
+                                />
+                                <YAxis
+                                    type="number"
+                                    dataKey="sentiment"
+                                    name="Sentiment"
+                                    domain={[-100, 100]}
+                                    tickFormatter={(val) => `${val}%`}
+                                    tick={{ fontSize: 12, fill: '#888' }}
+                                    tickMargin={10}
+                                    label={{ value: 'Net Sentiment Score', angle: -90, position: 'insideLeft', style: { textAnchor: 'middle' }, fill: '#666', fontSize: 13, dx: -10 }}
+                                />
+                                <ZAxis type="number" dataKey="volume" range={[100, 1000]} />
+                                <Tooltip
+                                    cursor={{ strokeDasharray: '3 3' }}
+                                    content={({ active, payload }) => {
+                                        if (active && payload && payload.length) {
+                                            const d = payload[0].payload;
+                                            const isGood = d.sentiment > 0;
+                                            const isHighSpend = d.spend > 60000;
+                                            const color = isGood ? (isHighSpend ? '#059669' : '#10B981') : (isHighSpend ? '#EF4444' : '#F59E0B');
+                                            return (
+                                                <div className="bg-white p-3 border rounded-lg shadow-lg" style={{ borderColor: color, borderTopWidth: 4 }}>
+                                                    <p className="font-bold text-gray-800 mb-1">{d.name}</p>
+                                                    <p className="text-xs text-gray-500 mb-2">{d.platform}</p>
+                                                    <div className="text-xs space-y-1">
+                                                        <p>Spend: <span className="font-medium">₹{d.spend.toLocaleString()}</span></p>
+                                                        <p>Sentiment: <span className="font-bold" style={{ color }}>{d.sentiment}%</span></p>
+                                                        <p>Engagement: <span className="font-medium">{d.volume}</span></p>
+                                                    </div>
+                                                </div>
+                                            );
+                                        }
+                                        return null;
+                                    }}
+                                />
+                                <ReferenceLine y={0} stroke="#cbd5e1" />
+                                <ReferenceLine x={60000} stroke="#cbd5e1" strokeDasharray="3 3" />
+                                <Scatter name="Campaigns" data={selectedPlatform === 'All Platforms' ? roiData : roiData.filter(i => i.platform === selectedPlatform)}>
+                                    {(selectedPlatform === 'All Platforms' ? roiData : roiData.filter(i => i.platform === selectedPlatform)).map((entry, index) => (
+                                        <Cell key={`cell-${index}`} fill={entry.sentiment > 0 ? (entry.spend > 60000 ? '#059669' : '#10B981') : (entry.spend > 60000 ? '#EF4444' : '#F59E0B')} />
+                                    ))}
+                                </Scatter>
+                            </ScatterChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
+            )}
+
+            {/* --- SECTION 4: ACTION CENTER --- */}
+            <div className="bg-white rounded-2xl p-6 shadow-sm border border-red-50">
+                <h3 className="text-red-600 text-lg font-bold mb-6 flex items-center gap-2">
+                    ⚠️ Urgent Attention Required
+                </h3>
+                <div className="flex flex-col gap-4">
                     {alerts.filter((_, i) => !dismissedAlerts.includes(i)).length > 0 ? (
                         alerts
                             .map((a, i) => ({ ...a, originalIndex: i }))
                             .filter((a) => !dismissedAlerts.includes(a.originalIndex))
-                            .map((a) => (
-                                <div key={a.originalIndex} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px', background: '#fcfcfc', borderRadius: '8px', border: '1px solid #eee' }}>
-                                    <div style={{ flex: 1 }}>
-                                        <small style={{ fontSize: '10px', fontWeight: 'bold', color: '#999', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{a.platform}</small>
-                                        <p style={{ margin: '5px 0 0 0', fontSize: '14px', color: '#333' }}>"{a.comment_text}"</p>
+                            .map((alert) => (
+                                <div key={alert.originalIndex} className="flex flex-col sm:flex-row justify-between items-start sm:items-center p-4 bg-gray-50 border border-gray-100 rounded-xl gap-4">
+                                    <div className="flex-1">
+                                        <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">{alert.platform}</span>
+                                        <p className="my-1 text-sm text-gray-800 font-medium">"{alert.comment_text}"</p>
+                                        <small className="text-gray-500">User: {alert.user_handle}</small>
                                     </div>
-                                    <div style={{ display: 'flex', gap: '10px', marginLeft: '20px' }}>
+                                    <div className="flex gap-2">
                                         <button
-                                            onClick={() => dismissAlert(a.originalIndex)}
-                                            disabled={generatingReplyIndex === a.originalIndex}
-                                            style={{
-                                                padding: '10px 16px',
-                                                background: 'white',
-                                                color: '#666',
-                                                border: '2px solid #e0e0e0',
-                                                borderRadius: '8px',
-                                                cursor: generatingReplyIndex === a.originalIndex ? 'not-allowed' : 'pointer',
-                                                fontSize: '13px',
-                                                fontWeight: '600',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: '6px',
-                                                transition: 'all 0.2s',
-                                                whiteSpace: 'nowrap'
-                                            }}
-                                            onMouseEnter={(e) => {
-                                                if (generatingReplyIndex !== a.originalIndex) {
-                                                    e.target.style.borderColor = '#999';
-                                                    e.target.style.color = '#333';
-                                                }
-                                            }}
-                                            onMouseLeave={(e) => {
-                                                if (generatingReplyIndex !== a.originalIndex) {
-                                                    e.target.style.borderColor = '#e0e0e0';
-                                                    e.target.style.color = '#666';
-                                                }
-                                            }}
+                                            onClick={() => dismissAlert(alert.originalIndex)}
+                                            className="px-3 py-2 text-xs font-medium text-gray-500 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
                                         >
-                                            <span>✕</span>
-                                            <span>Dismiss</span>
+                                            Dismiss
                                         </button>
                                         <button
-                                            onClick={() => generateAIReply(a.comment_text, a.platform, a.originalIndex)}
+                                            onClick={() => generateAIReply(alert.comment_text, alert.platform, alert.originalIndex)}
                                             disabled={generatingReplyIndex !== null}
-                                            style={{
-                                                padding: '10px 20px',
-                                                background: generatingReplyIndex === a.originalIndex ? '#95a5a6' : generatingReplyIndex !== null ? '#d0d0d0' : '#1a1a1a',
-                                                color: 'white',
-                                                border: 'none',
-                                                borderRadius: '8px',
-                                                cursor: generatingReplyIndex !== null ? 'not-allowed' : 'pointer',
-                                                fontSize: '13px',
-                                                fontWeight: '600',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: '8px',
-                                                transition: 'background 0.2s',
-                                                whiteSpace: 'nowrap'
-                                            }}
-                                            onMouseEnter={(e) => generatingReplyIndex === null && (e.target.style.background = '#333')}
-                                            onMouseLeave={(e) => generatingReplyIndex === null && (e.target.style.background = '#1a1a1a')}
+                                            className="px-4 py-2 bg-navy hover:bg-navy-light text-white rounded-lg text-xs font-medium transition-colors flex items-center gap-2"
                                         >
-                                            {generatingReplyIndex === a.originalIndex ? (
+                                            {generatingReplyIndex === alert.originalIndex ? (
                                                 <>
-                                                    <div style={{
-                                                        width: '14px',
-                                                        height: '14px',
-                                                        border: '2px solid #fff',
-                                                        borderTop: '2px solid transparent',
-                                                        borderRadius: '50%',
-                                                        animation: 'spin 0.8s linear infinite'
-                                                    }}></div>
+                                                    <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
                                                     <span>Generating...</span>
                                                 </>
                                             ) : (
-                                                <>
-                                                    <span>✨</span>
-                                                    <span>Draft Reply</span>
-                                                </>
+                                                'Draft Reply'
                                             )}
                                         </button>
                                     </div>
                                 </div>
                             ))
                     ) : (
-                        <div style={{ padding: '30px', textAlign: 'center', color: '#666' }}>
-                            <div style={{ fontSize: '48px', marginBottom: '10px' }}>✅</div>
-                            <p style={{ margin: 0, fontSize: '14px', fontWeight: '600' }}>No urgent actions needed</p>
-                            <p style={{ margin: '5px 0 0 0', fontSize: '12px', color: '#999' }}>All sentiment is looking good!</p>
-                        </div>
+                        <p className="text-gray-500 text-sm flex items-center gap-2 p-4 bg-green-50 rounded-lg text-green-700">
+                            ✅ All comments are healthy. No urgent actions needed.
+                        </p>
                     )}
                 </div>
             </div>
-            <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
         </div>
     );
 };

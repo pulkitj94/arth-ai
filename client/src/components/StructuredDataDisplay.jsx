@@ -142,7 +142,7 @@ function DataTable({ data }) {
       {data.length > 10 && !showAll && (
         <button
           onClick={() => setShowAll(true)}
-          className="text-sm text-primary-600 hover:text-primary-700 font-medium"
+          className="text-sm text-brand hover:text-brand-dark font-medium"
         >
           Show all {data.length} records →
         </button>
@@ -151,7 +151,7 @@ function DataTable({ data }) {
       {showAll && data.length > 10 && (
         <button
           onClick={() => setShowAll(false)}
-          className="text-sm text-primary-600 hover:text-primary-700 font-medium"
+          className="text-sm text-brand hover:text-brand-dark font-medium"
         >
           ← Show less
         </button>
@@ -168,7 +168,7 @@ function InsightsPanel({ insights }) {
     <div className="space-y-4">
       {/* Query Type Badge */}
       {insights.type && (
-        <div className="inline-flex items-center gap-2 px-3 py-1 bg-primary-50 text-primary-700 rounded-full text-sm font-medium">
+        <div className="inline-flex items-center gap-2 px-3 py-1 bg-brand/10 text-brand-dark rounded-full text-sm font-medium">
           {insights.type === 'comparison' ? '📊 Comparison Query' : '📋 Individual Items Query'}
         </div>
       )}

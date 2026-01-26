@@ -45,18 +45,19 @@ const SentimentTrend = () => {
                                 }
                                 return value;
                             }}
+                            tickMargin={10}
                         />
-                        <YAxis domain={[0, 100]} stroke="#888" fontSize={12} label={{ value: 'Health Score (%)', angle: -90, position: 'insideLeft', style: { fontSize: 12, fill: '#666' } }} />
+                        <YAxis domain={[0, 100]} stroke="#888" fontSize={12} tickMargin={10} label={{ value: 'Health Score (%)', angle: -90, position: 'insideLeft', style: { fontSize: 12, fill: '#666', textAnchor: 'middle' }, dx: -10 }} />
                         <Tooltip
                             contentStyle={{ borderRadius: '10px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
                             formatter={(value) => `${value}%`}
                             labelFormatter={(label) => `Time: ${label}`}
                         />
                         <Legend verticalAlign="top" align="right" height={36} />
-                        <Line type="monotone" dataKey="Twitter" stroke="#1DA1F2" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 8 }} />
-                        <Line type="monotone" dataKey="Instagram" stroke="#E1306C" strokeWidth={3} dot={{ r: 4 }} />
-                        <Line type="monotone" dataKey="Facebook" stroke="#4267B2" strokeWidth={3} dot={{ r: 4 }} />
-                        <Line type="monotone" dataKey="Linkedin" stroke="#0077B5" strokeWidth={3} dot={{ r: 4 }} />
+                        <Line type="monotone" dataKey="Twitter" stroke="#FF9A58" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 8 }} />
+                        <Line type="monotone" dataKey="Instagram" stroke="#012639" strokeWidth={3} dot={{ r: 4 }} />
+                        <Line type="monotone" dataKey="Facebook" stroke="#FB6793" strokeWidth={3} dot={{ r: 4 }} />
+                        <Line type="monotone" dataKey="Linkedin" stroke="#028196" strokeWidth={3} dot={{ r: 4 }} />
                     </LineChart>
                 </ResponsiveContainer>
             </div>

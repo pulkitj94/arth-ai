@@ -41,6 +41,7 @@ function CommandCenter() {
   const [clarificationData, setClarificationData] = useState(null);
   const [showClarification, setShowClarification] = useState(false);
   const [pendingQuery, setPendingQuery] = useState('');
+  const [showHistory, setShowHistory] = useState(false);
   const [expandedCategories, setExpandedCategories] = useState(
     APP_CONFIG.sampleQueries.reduce((acc, category, idx) => {
       acc[idx] = category.defaultExpanded || false;
@@ -51,7 +52,9 @@ function CommandCenter() {
   const messagesContainerRef = useRef(null);
   const inputRef = useRef(null);
 
-  const { addQuery } = useQueryHistory();
+  const { history, addQuery, clearHistory } = useQueryHistory();
+
+
 
   const toggleCategory = (idx) => {
     setExpandedCategories(prev => ({
@@ -251,10 +254,10 @@ function CommandCenter() {
                 >
                   <div
                     className={`max-w-3xl rounded-lg px-4 py-3 ${message.type === 'user'
-                      ? 'bg-primary-600 text-white'
+                      ? 'bg-brand text-white'
                       : message.type === 'error'
                         ? 'bg-red-50 text-red-900 border border-red-200'
-                        : 'bg-gray-50 text-gray-900 border border-gray-200'
+                        : 'bg-white text-gray-900 border border-gray-200 shadow-sm'
                       }`}
                   >
                     {message.type === 'user' ? (
@@ -287,9 +290,9 @@ function CommandCenter() {
                   <div className="bg-gray-50 rounded-lg px-4 py-3 border border-gray-200">
                     <div className="flex items-center gap-2">
                       <div className="flex space-x-1">
-                        <div className="w-2 h-2 bg-primary-600 rounded-full animate-bounce"></div>
-                        <div className="w-2 h-2 bg-primary-600 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-                        <div className="w-2 h-2 bg-primary-600 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                        <div className="w-2 h-2 bg-brand rounded-full animate-bounce"></div>
+                        <div className="w-2 h-2 bg-brand rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                        <div className="w-2 h-2 bg-brand rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
                       </div>
                       <span className="text-sm text-gray-600">
                         {APP_CONFIG.ui.loadingMessages[Math.floor(Math.random() * APP_CONFIG.ui.loadingMessages.length)]}
@@ -302,7 +305,47 @@ function CommandCenter() {
             </div>
 
             {/* Input Area */}
-            <div className="border-t border-gray-200 p-4 bg-gray-50">
+            <div className="border-t border-gray-200 p-4 bg-gray-50 relative">
+              {showHistory && (
+                <div className="absolute bottom-20 right-20 w-80 bg-white rounded-xl shadow-xl border border-gray-200 overflow-hidden z-20 animate-in fade-in slide-in-from-bottom-2 duration-200">
+                  <div className="p-3 border-b border-gray-100 flex items-center justify-between bg-gray-50">
+                    <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>
+                      Recent Queries
+                    </h3>
+                    {history.length > 0 && (
+                      <button
+                        onClick={() => { clearHistory(); setShowHistory(false); }}
+                        className="text-xs text-red-500 hover:text-red-700 font-medium px-2 py-1 rounded hover:bg-red-50 transition-colors"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                  <div className="max-h-60 overflow-y-auto py-1">
+                    {history.length === 0 ? (
+                      <div className="p-4 text-center text-sm text-gray-400">
+                        No recent history
+                      </div>
+                    ) : (
+                      history.map((item) => (
+                        <button
+                          key={item.id}
+                          onClick={() => {
+                            handleSendMessage(item.query);
+                            setShowHistory(false);
+                          }}
+                          className="w-full text-left px-4 py-3 hover:bg-indigo-50 transition-colors border-b border-gray-50 last:border-0 group"
+                        >
+                          <p className="text-sm text-gray-700 group-hover:text-indigo-700 truncate font-medium" title={item.query}>{item.query}</p>
+                          <span className="text-xs text-gray-400 mt-0.5 block">{new Date(item.timestamp).toLocaleDateString()}</span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+
               <div className="relative">
                 <div className="flex gap-2">
                   <input
@@ -313,9 +356,20 @@ function CommandCenter() {
                     onKeyDown={handleKeyDown}
                     placeholder={APP_CONFIG.ui.placeholderText}
                     maxLength={APP_CONFIG.ui.maxMessageLength}
-                    className="flex-1 rounded-lg border border-gray-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                    className="flex-1 rounded-lg border border-gray-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent"
                     disabled={isLoading}
+                    onFocus={() => setShowHistory(false)}
                   />
+                  <button
+                    onClick={() => setShowHistory(!showHistory)}
+                    className={`p-3 rounded-lg border transition-colors ${showHistory
+                      ? 'bg-indigo-100 border-indigo-200 text-indigo-600'
+                      : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50 hover:text-gray-700'
+                      }`}
+                    title="View Query History"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>
+                  </button>
                   {isLoading ? (
                     <button
                       onClick={handleStopGeneration}
@@ -330,7 +384,7 @@ function CommandCenter() {
                     <button
                       onClick={() => handleSendMessage()}
                       disabled={!inputValue.trim()}
-                      className="bg-primary-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      className="bg-brand text-white px-6 py-3 rounded-lg font-medium hover:bg-brand-dark disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                     >
                       {APP_CONFIG.ui.submitButtonText}
                     </button>
@@ -347,9 +401,8 @@ function CommandCenter() {
             {/* Toggle Button (Always Visible) */}
             <button
               onClick={() => setShowSamples(!showSamples)}
-              className={`fixed top-1/2 -translate-y-1/2 z-50 bg-white shadow-lg border border-gray-200 rounded-l-lg p-3 hover:bg-gray-50 transition-all duration-300 ${
-                showSamples ? 'right-[420px]' : 'right-0'
-              }`}
+              className={`fixed top-1/2 -translate-y-1/2 z-50 bg-white shadow-lg border border-gray-200 rounded-l-lg p-3 hover:bg-gray-50 transition-all duration-300 ${showSamples ? 'right-[420px]' : 'right-0'
+                }`}
               aria-label={showSamples ? "Hide sample queries" : "Show sample queries"}
             >
               {showSamples ? (
@@ -365,12 +418,11 @@ function CommandCenter() {
 
             {/* Drawer Panel */}
             <div
-              className={`fixed top-0 right-0 h-screen bg-gradient-to-b from-gray-50 to-white shadow-2xl border-l border-gray-200 transition-transform duration-300 ease-in-out z-40 ${
-                showSamples ? 'translate-x-0' : 'translate-x-full'
-              }`}
+              className={`fixed top-16 right-0 h-[calc(100vh-64px)] bg-gradient-to-b from-gray-50 to-white shadow-2xl border-l border-gray-200 transition-transform duration-300 ease-in-out z-40 ${showSamples ? 'translate-x-0' : 'translate-x-full'
+                }`}
               style={{ width: '420px' }}
             >
-              <div className="h-full overflow-y-auto px-6 py-4" style={{ paddingTop: '100px', paddingBottom: '40px' }}>
+              <div className="h-full overflow-y-auto px-6 py-4">
                 <div className="mb-6">
                   <h3 className="text-xl font-bold text-gray-900 mb-1">Sample Queries</h3>
                   <p className="text-xs text-gray-500">Click any query to use it</p>
@@ -392,9 +444,8 @@ function CommandCenter() {
                           </div>
                         </div>
                         <svg
-                          className={`w-5 h-5 text-gray-400 transition-transform duration-200 flex-shrink-0 ${
-                            expandedCategories[idx] ? 'transform rotate-180' : ''
-                          }`}
+                          className={`w-5 h-5 text-gray-400 transition-transform duration-200 flex-shrink-0 ${expandedCategories[idx] ? 'transform rotate-180' : ''
+                            }`}
                           fill="none"
                           stroke="currentColor"
                           viewBox="0 0 24 24"
@@ -413,7 +464,7 @@ function CommandCenter() {
                                 setInputValue(query);
                                 inputRef.current?.focus();
                               }}
-                              className="w-full text-left text-xs text-gray-700 hover:text-primary-600 hover:bg-primary-50 rounded-md px-3 py-2 transition-all border border-transparent hover:border-primary-200"
+                              className="w-full text-left text-xs text-gray-700 hover:text-brand hover:bg-brand/10 rounded-md px-3 py-2 transition-all border border-transparent hover:border-brand/20"
                               disabled={isLoading}
                             >
                               {query}
