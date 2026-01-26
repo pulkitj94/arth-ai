@@ -42,7 +42,13 @@ Transform hours of manual reporting into instant, actionable insights with real-
 ### 💅 Modern UI
 - Clean, responsive design
 - Real-time chat interface
+### 💅 Modern UI
+- Clean, responsive design
+- Real-time chat interface
 - Sample queries for easy exploration
+- **Granular Analytics**: View Daily, Weekly, or Monthly trends with scrollable charts
+- **Interactive Charts**: Sticky Y-axis for easy reading while scrolling, with smart "K" formatting for large numbers
+- **Media Type Badges**: Instantly identify Video, Image, or Carousel content
 - Processing time indicators
 - Mobile-friendly
 
@@ -493,7 +499,14 @@ social-media-analytics-platform/
 │   │   │   ├── ReplyModal.jsx         # AI reply generator
 │   │   │   ├── ClarificationDialog.jsx # Query clarification
 │   │   │   ├── DataVisualization.jsx   # Data rendering
-│   │   │   └── StructuredDataDisplay.jsx
+│   │   │   ├── StructuredDataDisplay.jsx
+│   │   │   ├── EngagementChart.jsx    # 📈 Granular engagement analysis
+│   │   │   ├── AudienceGrowth.jsx     # 📈 Audience growth tracking
+│   │   │   ├── PlatformDistribution.jsx # Pie charts for distribution
+│   │   │   ├── TopPosts.jsx           # 🏆 High-performing content
+│   │   │   ├── Header.jsx             # App header
+│   │   │   ├── Sidebar.jsx            # App navigation
+│   │   │   └── MainLayout.jsx         # Layout wrapper
 │   │   ├── hooks/
 │   │   │   └── useQueryHistory.js  # Query history management
 │   │   ├── api/

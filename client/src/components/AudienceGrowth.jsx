@@ -12,16 +12,26 @@ export default function AudienceGrowth({ data }) {
         const grouped = {};
 
         data.forEach(item => {
-            const date = new Date(item.fullDate);
+            // Safe local date parsing from YYYY-MM-DD
+            const [y, m, d] = item.fullDate.split('-').map(Number);
+            const date = new Date(y, m - 1, d); // Local time constructor
+
             let key = item.fullDate;
             let label = item.name;
 
             if (interval === 'Weekly') {
                 // Get start of week (Monday)
-                const day = date.getDay();
-                const diff = date.getDate() - day + (day === 0 ? -6 : 1); // adjust when day is sunday
-                const monday = new Date(date.setDate(diff));
-                key = monday.toISOString().split('T')[0];
+                const day = date.getDay(); // 0-6 (Sun-Sat)
+                const diff = date.getDate() - day + (day === 0 ? -6 : 1); // Adjust to Monday
+                const monday = new Date(date);
+                monday.setDate(diff);
+
+                // Format key as YYYY-MM-DD
+                const mYear = monday.getFullYear();
+                const mMonth = String(monday.getMonth() + 1).padStart(2, '0');
+                const mDay = String(monday.getDate()).padStart(2, '0');
+                key = `${mYear}-${mMonth}-${mDay}`;
+
                 label = `Week of ${monday.getDate()} ${monday.toLocaleString('default', { month: 'short' })}`;
             } else if (interval === 'Monthly') {
                 key = `${date.getFullYear()}-${date.getMonth()}`;
@@ -35,7 +45,8 @@ export default function AudienceGrowth({ data }) {
             grouped[key].count += 1;
         });
 
-        return Object.values(grouped);
+        // Sort by date to ensure correct order
+        return Object.values(grouped).sort((a, b) => new Date(a.fullDate) - new Date(b.fullDate));
     }, [data, interval]);
 
     return (
@@ -70,39 +81,70 @@ export default function AudienceGrowth({ data }) {
                 </div>
             </div>
 
-            <div className="h-[300px] w-full overflow-x-auto pb-2 scrollbar-hide">
-                <div style={{ minWidth: `${Math.max(100, chartData.length * 40)}px`, height: '100%' }}>
+            {/* Split View for Sticky Y-Axis */}
+            <div className="flex h-[300px] w-full">
+                {/* Left: Fixed Y-Axis */}
+                <div className="w-[60px] h-full flex-shrink-0 z-10 bg-white border-r border-gray-100">
                     <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={chartData} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
-                            <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="#f3f4f6" />
-                            <XAxis
-                                dataKey="name"
-                                axisLine={false}
-                                tickLine={false}
-                                tick={{ fill: '#9ca3af', fontSize: 12 }}
-                                interval={interval === 'Daily' ? 2 : 0}
-                            />
+                        <LineChart data={chartData} margin={{ top: 10, right: 0, left: 0, bottom: 0 }}>
                             <YAxis
                                 axisLine={false}
                                 tickLine={false}
-                                tick={{ fill: '#9ca3af', fontSize: 12 }}
+                                tick={{ fill: '#9ca3af', fontSize: 11 }}
                                 domain={['dataMin', 'dataMax']}
-                                hide
+                                tickFormatter={(val) => val >= 1000 ? (val / 1000).toFixed(0) + 'K' : val}
+                                width={60}
                             />
-                            <Tooltip
-                                contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
-                            />
+                            {/* Invisible Line to ensure scale calculation */}
                             <Line
                                 type="monotone"
                                 dataKey="value"
-                                stroke="#FB6793"
-                                strokeWidth={3}
-                                dot={{ fill: '#FB6793', strokeWidth: 2, r: 4, stroke: '#fff' }}
-                                activeDot={{ r: 6 }}
-                                animationDuration={1000}
+                                stroke="none"
+                                dot={false}
                             />
                         </LineChart>
                     </ResponsiveContainer>
+                </div>
+
+                {/* Right: Scrollable Content */}
+                <div className="flex-1 overflow-x-auto pb-2 scrollbar-hide">
+                    <div style={{
+                        minWidth: `${Math.max(100, chartData.length * (interval === 'Weekly' ? 120 : interval === 'Monthly' ? 80 : 50))}px`,
+                        height: '100%'
+                    }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                            <LineChart data={chartData} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+                                <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="#f3f4f6" />
+                                <XAxis
+                                    dataKey="name"
+                                    axisLine={false}
+                                    tickLine={false}
+                                    tick={{ fill: '#9ca3af', fontSize: 12 }}
+                                    interval={interval === 'Daily' ? 2 : 0}
+                                    padding={{ left: 30, right: 30 }}
+                                />
+                                {/* Hidden YAxis ensures alignment with fixed YAxis */}
+                                <YAxis
+                                    hide={true}
+                                    width={0}
+                                    domain={['dataMin', 'dataMax']}
+                                />
+                                <Tooltip
+                                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                                    formatter={(val) => val >= 1000 ? (val / 1000).toFixed(1) + 'K' : val}
+                                />
+                                <Line
+                                    type="monotone"
+                                    dataKey="value"
+                                    stroke="#FB6793"
+                                    strokeWidth={3}
+                                    dot={{ fill: '#FB6793', strokeWidth: 2, r: 4, stroke: '#fff' }}
+                                    activeDot={{ r: 6 }}
+                                    animationDuration={1000}
+                                />
+                            </LineChart>
+                        </ResponsiveContainer>
+                    </div>
                 </div>
             </div>
         </div>

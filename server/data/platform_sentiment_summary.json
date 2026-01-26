@@ -1,13 +1,13 @@
 [
     {
         "platform": "Facebook",
-        "health_score": 69.16,
+        "health_score": 70.27,
         "distribution": {
-            "positive": 65.4,
-            "neutral": 7.5,
-            "negative": 27.1
+            "positive": 66.7,
+            "neutral": 7.2,
+            "negative": 26.1
         },
-        "total_comments": 107
+        "total_comments": 111
     },
     {
         "platform": "Instagram",
@@ -21,12 +21,12 @@
     },
     {
         "platform": "Twitter",
-        "health_score": 62.77,
+        "health_score": 64.29,
         "distribution": {
-            "positive": 61.7,
-            "neutral": 2.1,
-            "negative": 36.2
+            "positive": 63.3,
+            "neutral": 2.0,
+            "negative": 34.7
         },
-        "total_comments": 47
+        "total_comments": 49
     }
 ]
