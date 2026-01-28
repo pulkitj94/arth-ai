@@ -13,23 +13,23 @@ export const APP_CONFIG = {
   // BRANDING
   // ═══════════════════════════════════════════════════════════════════════════
   // ✏️ CUSTOMIZE: Change app name and tagline
-  
+
   appName: 'Social Command Center',
   appTagline: 'AI-Powered Social Media Intelligence',
   appDescription: 'Ask anything about your social media performance',
-  
+
   // ═══════════════════════════════════════════════════════════════════════════
   // API CONFIGURATION
   // ═══════════════════════════════════════════════════════════════════════════
-  
-  apiBaseUrl: 'http://localhost:3001',
+
+  apiBaseUrl: '',
   apiEndpoint: '/api/chat',
-  
+
   // ═══════════════════════════════════════════════════════════════════════════
   // SAMPLE QUERIES (shown in sidebar)
   // ═══════════════════════════════════════════════════════════════════════════
   // ✏️ CUSTOMIZE: Add your own sample questions
-  
+
   sampleQueries: [
     {
       category: 'View simple beginner examples',
@@ -92,12 +92,12 @@ export const APP_CONFIG = {
       defaultExpanded: false
     }
   ],
-  
+
   // ═══════════════════════════════════════════════════════════════════════════
   // UI SETTINGS
   // ═══════════════════════════════════════════════════════════════════════════
   // ✏️ CUSTOMIZE: Adjust UI behavior
-  
+
   ui: {
     showSampleQueries: true,
     showProcessingTime: true,
@@ -112,12 +112,12 @@ export const APP_CONFIG = {
       'Almost there...'
     ]
   },
-  
+
   // ═══════════════════════════════════════════════════════════════════════════
   // WELCOME MESSAGE
   // ═══════════════════════════════════════════════════════════════════════════
   // ✏️ CUSTOMIZE: Change initial welcome message
-  
+
   welcomeMessage: {
     show: true,
     title: 'Welcome to Social Command Center! 👋',

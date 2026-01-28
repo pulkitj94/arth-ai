@@ -23,20 +23,20 @@ const __dirname = path.dirname(__filename);
 const LOGGER_CONFIG = {
   // Enable/disable logging
   enabled: true,
-  
+
   // Log file paths
   logsDir: path.join(__dirname, '../logs'),
   queryLogFile: 'queries.jsonl',      // JSONL format (one JSON per line)
   analyticsFile: 'analytics.json',    // Aggregated analytics
-  
+
   // Privacy settings
   anonymizeIP: true,                  // Hash IP addresses
   storeSensitiveData: false,          // Don't store PII
-  
+
   // Retention
   maxLogSize: 100 * 1024 * 1024,      // 100 MB per file
   rotateAfterDays: 30,                // Rotate logs after 30 days
-  
+
   // Analytics
   calculateAnalytics: true,           // Generate usage analytics
   analyticsInterval: 3600000          // Update analytics every hour
@@ -63,56 +63,56 @@ ensureLogsDir();
  */
 export function logQuery(queryData) {
   if (!LOGGER_CONFIG.enabled) return;
-  
+
   try {
     const logEntry = {
       // Timestamp
       timestamp: new Date().toISOString(),
       unix_timestamp: Date.now(),
-      
+
       // Query details
       query: queryData.query,
       query_length: queryData.query.length,
       query_hash: hashString(queryData.query),
-      
+
       // Response details
       response_success: queryData.success || false,
       response_time: queryData.processingTime || null,
       response_length: queryData.response?.length || 0,
-      
+
       // Analytics metadata
       cached: queryData.cached || false,
       mode: queryData.mode || 'production',
-      
+
       // User context (anonymized if configured)
       user_id: queryData.userId || 'anonymous',
       session_id: queryData.sessionId || null,
-      ip_address: LOGGER_CONFIG.anonymizeIP ? 
-        hashString(queryData.ipAddress || 'unknown') : 
+      ip_address: LOGGER_CONFIG.anonymizeIP ?
+        hashString(queryData.ipAddress || 'unknown') :
         queryData.ipAddress,
       user_agent: queryData.userAgent || null,
-      
+
       // Classification
       query_type: classifyQueryType(queryData.query),
       contains_platform: detectPlatforms(queryData.query),
       contains_metrics: detectMetrics(queryData.query),
-      
+
       // Error tracking
       error: queryData.error || null,
-      
+
       // Additional metadata
       metadata: queryData.metadata || {}
     };
-    
+
     // Append to JSONL file
     const logPath = path.join(LOGGER_CONFIG.logsDir, LOGGER_CONFIG.queryLogFile);
     fs.appendFileSync(logPath, JSON.stringify(logEntry) + '\n');
-    
+
     console.log(`📝 Query logged: "${queryData.query.substring(0, 50)}..."`);
-    
+
     // Check if log rotation needed
     checkLogRotation(logPath);
-    
+
   } catch (error) {
     console.error('❌ Error logging query:', error.message);
   }
@@ -125,7 +125,7 @@ export function logQuery(queryData) {
  */
 function classifyQueryType(query) {
   const lowerQuery = query.toLowerCase();
-  
+
   if (/most|highest|top|best|worst|lowest/i.test(lowerQuery)) {
     return 'factual';
   }
@@ -141,7 +141,7 @@ function classifyQueryType(query) {
   if (/why|explain|reason|cause/i.test(lowerQuery)) {
     return 'explanatory';
   }
-  
+
   return 'general';
 }
 
@@ -153,12 +153,12 @@ function classifyQueryType(query) {
 function detectPlatforms(query) {
   const lowerQuery = query.toLowerCase();
   const platforms = [];
-  
+
   if (/instagram|ig|insta/i.test(lowerQuery)) platforms.push('instagram');
   if (/linkedin|li/i.test(lowerQuery)) platforms.push('linkedin');
   if (/facebook|fb|meta/i.test(lowerQuery)) platforms.push('facebook');
   if (/twitter|tweet|x\.com/i.test(lowerQuery)) platforms.push('twitter');
-  
+
   return platforms;
 }
 
@@ -170,14 +170,14 @@ function detectPlatforms(query) {
 function detectMetrics(query) {
   const lowerQuery = query.toLowerCase();
   const metrics = [];
-  
+
   if (/engage/i.test(lowerQuery)) metrics.push('engagement');
   if (/like/i.test(lowerQuery)) metrics.push('likes');
   if (/comment/i.test(lowerQuery)) metrics.push('comments');
   if (/share/i.test(lowerQuery)) metrics.push('shares');
   if (/reach/i.test(lowerQuery)) metrics.push('reach');
   if (/impression/i.test(lowerQuery)) metrics.push('impressions');
-  
+
   return metrics;
 }
 
@@ -204,7 +204,7 @@ function hashString(str) {
 function checkLogRotation(logPath) {
   try {
     const stats = fs.statSync(logPath);
-    
+
     // Check size
     if (stats.size > LOGGER_CONFIG.maxLogSize) {
       rotateLog(logPath);
@@ -217,7 +217,7 @@ function checkLogRotation(logPath) {
 function rotateLog(logPath) {
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   const archivePath = logPath.replace('.jsonl', `.${timestamp}.jsonl`);
-  
+
   try {
     fs.renameSync(logPath, archivePath);
     console.log(`🔄 Rotated log file: ${archivePath}`);
@@ -235,14 +235,14 @@ function rotateLog(logPath) {
 export function getQueryLogs(limit = 100, offset = 0) {
   try {
     const logPath = path.join(LOGGER_CONFIG.logsDir, LOGGER_CONFIG.queryLogFile);
-    
+
     if (!fs.existsSync(logPath)) {
       return [];
     }
-    
+
     const content = fs.readFileSync(logPath, 'utf-8');
     const lines = content.trim().split('\n').filter(line => line.length > 0);
-    
+
     // Parse JSONL
     const logs = lines
       .slice(-limit - offset, -offset || undefined)
@@ -255,7 +255,7 @@ export function getQueryLogs(limit = 100, offset = 0) {
       })
       .filter(log => log !== null)
       .reverse(); // Most recent first
-    
+
     return logs;
   } catch (error) {
     console.error('❌ Error reading logs:', error.message);
@@ -271,11 +271,11 @@ export function getQueryLogs(limit = 100, offset = 0) {
 export function generateAnalytics() {
   try {
     const logs = getQueryLogs(10000); // Last 10,000 queries
-    
+
     if (logs.length === 0) {
       return null;
     }
-    
+
     const analytics = {
       generated_at: new Date().toISOString(),
       period: {
@@ -283,47 +283,47 @@ export function generateAnalytics() {
         end: logs[0]?.timestamp,
         total_queries: logs.length
       },
-      
+
       // Success rate
       success_rate: {
         successful: logs.filter(l => l.response_success).length,
         failed: logs.filter(l => !l.response_success).length,
         rate: ((logs.filter(l => l.response_success).length / logs.length) * 100).toFixed(1) + '%'
       },
-      
+
       // Cache performance
       cache_performance: {
         hits: logs.filter(l => l.cached).length,
         misses: logs.filter(l => !l.cached).length,
         hit_rate: ((logs.filter(l => l.cached).length / logs.length) * 100).toFixed(1) + '%'
       },
-      
+
       // Response times
       response_times: calculateResponseTimeStats(logs),
-      
+
       // Query types distribution
       query_types: calculateDistribution(logs, 'query_type'),
-      
+
       // Platform mentions
       platform_mentions: calculatePlatformMentions(logs),
-      
+
       // Metric mentions
       metric_mentions: calculateMetricMentions(logs),
-      
+
       // Popular queries
       popular_queries: findPopularQueries(logs, 10),
-      
+
       // Hourly distribution
       hourly_distribution: calculateHourlyDistribution(logs)
     };
-    
+
     // Save analytics
     const analyticsPath = path.join(LOGGER_CONFIG.logsDir, LOGGER_CONFIG.analyticsFile);
     fs.writeFileSync(analyticsPath, JSON.stringify(analytics, null, 2));
-    
+
     console.log('📊 Analytics generated');
     return analytics;
-    
+
   } catch (error) {
     console.error('❌ Error generating analytics:', error.message);
     return null;
@@ -337,11 +337,11 @@ function calculateResponseTimeStats(logs) {
   const times = logs
     .filter(l => l.response_time !== null)
     .map(l => parseFloat(l.response_time));
-  
+
   if (times.length === 0) return null;
-  
+
   times.sort((a, b) => a - b);
-  
+
   return {
     count: times.length,
     min: times[0].toFixed(2),
@@ -398,7 +398,7 @@ function findPopularQueries(logs, limit) {
       queryCounts[hash].avg_response_time.push(parseFloat(log.response_time));
     }
   });
-  
+
   // Calculate averages
   Object.values(queryCounts).forEach(q => {
     if (q.avg_response_time.length > 0) {
@@ -407,7 +407,7 @@ function findPopularQueries(logs, limit) {
       q.avg_response_time = null;
     }
   });
-  
+
   return Object.values(queryCounts)
     .sort((a, b) => b.count - a.count)
     .slice(0, limit);
@@ -429,15 +429,15 @@ function calculateHourlyDistribution(logs) {
  */
 export function startPeriodicAnalytics() {
   if (!LOGGER_CONFIG.calculateAnalytics) return;
-  
+
   // Generate immediately
   generateAnalytics();
-  
+
   // Schedule periodic updates
   setInterval(() => {
     generateAnalytics();
   }, LOGGER_CONFIG.analyticsInterval);
-  
+
   console.log(`📊 Analytics generation scheduled: Every ${LOGGER_CONFIG.analyticsInterval / 60000} minutes`);
 }
 
@@ -450,15 +450,15 @@ export function queryLoggerMiddleware(req, res, next) {
   if (!LOGGER_CONFIG.enabled) {
     return next();
   }
-  
+
   // Store original res.json
   const originalJson = res.json.bind(res);
   const startTime = Date.now();
-  
+
   // Override res.json to log after response
-  res.json = function(data) {
+  res.json = function (data) {
     const processingTime = ((Date.now() - startTime) / 1000).toFixed(2);
-    
+
     // Log query
     logQuery({
       query: req.body.message || '',
@@ -477,10 +477,10 @@ export function queryLoggerMiddleware(req, res, next) {
         method: req.method
       }
     });
-    
+
     return originalJson(data);
   };
-  
+
   next();
 }
 

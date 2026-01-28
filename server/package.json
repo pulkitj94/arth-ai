@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "start": "node index.js",
-    "dev": "node --watch index.js"
+    "dev": "node --watch --watch-path=./routes --watch-path=./utils --watch-path=./llm --watch-path=./langchain --watch-path=./index.js index.js"
   },
   "dependencies": {
     "@langchain/community": "^0.3.0",

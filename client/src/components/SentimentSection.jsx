@@ -7,7 +7,7 @@ const SentimentSection = () => {
 
     useEffect(() => {
         // Fetching the JSON summary from your newly created Node route
-        fetch('http://localhost:3001/api/sentiment/summary')
+        fetch('/api/sentiment/summary')
             .then(res => res.json())
             .then(data => setSummary(data))
             .catch(err => setError("Could not load sentiment data."));

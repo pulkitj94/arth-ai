@@ -456,7 +456,7 @@ async function startServer() {
     fileWatcher.start();
     fileWatcher.onChange(() => getQueryProcessor().clearCache());
 
-    app.listen(PORT, () => {
+    app.listen(PORT, '0.0.0.0', () => {
       console.log(`✅ SERVER READY on http://localhost:${PORT}`);
       console.log(`🕒 Cron Active: Hourly Normal Simulation`);
     });

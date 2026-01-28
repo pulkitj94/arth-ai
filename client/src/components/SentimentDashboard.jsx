@@ -26,21 +26,21 @@ const SentimentDashboard = () => {
         try {
             if (!keepLoadingState) setLoading(true);
 
-            const resSummary = await fetch('http://localhost:3001/api/sentiment/summary');
+            const resSummary = await fetch('/api/sentiment/summary');
             const summary = await resSummary.json();
             setSentimentData(summary);
 
-            const resAlerts = await fetch('http://localhost:3001/api/sentiment/negative-alerts');
+            const resAlerts = await fetch('/api/sentiment/negative-alerts');
             const alertData = await resAlerts.json();
             setAlerts(alertData);
 
-            const resHistory = await fetch('http://localhost:3001/api/sentiment/history');
+            const resHistory = await fetch('/api/sentiment/history');
             const history = await resHistory.json();
             setHistoryData(history);
 
             // Fetch ROI Data if endpoint exists (handling potential absence gracefully)
             try {
-                const resROI = await fetch('http://localhost:3001/api/analytics/roi-matrix');
+                const resROI = await fetch('/api/analytics/roi-matrix');
                 if (resROI.ok) {
                     const roiJson = await resROI.json();
                     setRoiData(roiJson);
@@ -69,7 +69,7 @@ const SentimentDashboard = () => {
             setIsSimulating(true);
             setLoading(true);
 
-            const res = await fetch('http://localhost:3001/api/simulate/trigger', {
+            const res = await fetch('/api/simulate/trigger', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ scenario: scenarioType })
@@ -98,7 +98,7 @@ const SentimentDashboard = () => {
     const handleRefresh = async () => {
         try {
             setLoading(true);
-            await fetch('http://localhost:3001/api/sentiment/refresh', { method: 'POST' });
+            await fetch('/api/sentiment/refresh', { method: 'POST' });
             setTimeout(() => fetchData(false), 6000);
         } catch (err) {
             console.error("Refresh failed", err);
@@ -110,7 +110,7 @@ const SentimentDashboard = () => {
     const generateAIReply = async (comment, platform, index) => {
         try {
             setGeneratingReplyIndex(index);
-            const res = await fetch('http://localhost:3001/api/sentiment/generate-reply', {
+            const res = await fetch('/api/sentiment/generate-reply', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ comment, platform })
