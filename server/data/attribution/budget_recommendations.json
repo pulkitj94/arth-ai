@@ -1,0 +1,50 @@
+{
+  "calculation_date": "2026-02-06",
+  "total_budget": 2655490.6,
+  "average_attributed_roas": 5.34,
+  "platforms": [
+    {
+      "platform": "instagram",
+      "current_budget": 1100695.12,
+      "recommended_budget": 1100695.12,
+      "change_amount": 0.0,
+      "change_pct": 0.0,
+      "action": "maintain",
+      "attributed_roas": 4.38,
+      "roas_ratio": 0.82,
+      "confidence": "high",
+      "reasoning": "Attributed ROAS (4.38x) is near platform average (5.34x)"
+    },
+    {
+      "platform": "facebook",
+      "current_budget": 850640.56,
+      "recommended_budget": 1105832.73,
+      "change_amount": 255192.17,
+      "change_pct": 30.0,
+      "action": "increase",
+      "attributed_roas": 6.65,
+      "roas_ratio": 1.25,
+      "confidence": "high",
+      "reasoning": "Attributed ROAS (6.65x) is 25% above platform average (5.34x)"
+    },
+    {
+      "platform": "google",
+      "current_budget": 704154.92,
+      "recommended_budget": 704154.92,
+      "change_amount": 0.0,
+      "change_pct": 0.0,
+      "action": "maintain",
+      "attributed_roas": 5.25,
+      "roas_ratio": 0.98,
+      "confidence": "high",
+      "reasoning": "Attributed ROAS (5.25x) is near platform average (5.34x)"
+    }
+  ],
+  "expected_impact": {
+    "current_portfolio_roas": 5.34,
+    "projected_portfolio_roas": 5.45,
+    "improvement_pct": 2.16,
+    "current_total_budget": 2655490.6,
+    "recommended_total_budget": 2910682.77
+  }
+}

@@ -6,7 +6,12 @@ import Dashboard from './pages/Dashboard';
 import PostPredictor from './pages/PostPredictor';
 import MainLayout from './components/MainLayout';
 import { FilterProvider } from './context/FilterContext';
+// In client/src/App.jsx
 
+import Attribution from './pages/Attribution';
+
+// Add to your routes:
+<Route path="/attribution" element={<Attribution />} />
 function App() {
   return (
     <Router>
@@ -17,6 +22,7 @@ function App() {
             <Route path="/chat" element={<CommandCenter />} />
             <Route path="/sentiment" element={<SentimentHealth />} />
             <Route path="/predictor" element={<PostPredictor />} />
+            <Route path="/attribution" element={<Attribution />} />
           </Routes>
         </MainLayout>
       </FilterProvider>

@@ -11,6 +11,8 @@ import { fileURLToPath } from 'url';
 import { exec } from 'child_process';
 import { parse } from 'csv-parse/sync';
 import cron from 'node-cron';
+import attributionRoutes from './routes/attribution.js';
+
 
 // Existing project imports
 import chatRoutes from './routes/chat.js';
@@ -30,6 +32,8 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 app.use(cors());
+app.use('/api/attribution', attributionRoutes);
+
 app.use(express.json({ limit: '50mb' })); // Increased limit for image uploads
 app.use('/api/predict', predictorRoutes);
 
