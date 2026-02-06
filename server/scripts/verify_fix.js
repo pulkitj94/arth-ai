@@ -1,4 +1,4 @@
-import FilterGenerator from './llm/filterGenerator.js';
+import FilterGenerator from '../llm/filterGenerator.js';
 
 // Mock getFilterCache to avoid dependency issues if possible, 
 // strictly speaking we are importing the real one, but usually it works if it just returns a Map.

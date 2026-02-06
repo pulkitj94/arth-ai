@@ -2,14 +2,14 @@
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { initializeVectorStore } from './langchain/vectorStore.js';
-import { predictPostPerformance } from './llm/postPredictor.js';
+import { initializeVectorStore } from '../langchain/vectorStore.js';
+import { predictPostPerformance } from '../llm/postPredictor.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Load env vars
-dotenv.config({ path: path.join(__dirname, '.env') });
+dotenv.config({ path: path.join(__dirname, '../.env') });
 
 async function runDebug() {
     console.log("🚀 Starting Debug Script...");
