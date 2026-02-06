@@ -14,6 +14,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 let vectorStore = null;
+let globalRecords = []; // Store raw records for statistical analysis
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -22,43 +23,44 @@ let vectorStore = null;
  */
 async function loadCampaignData() {
   console.log('📊 Loading campaign data from CSV files...');
-  
+
   try {
     const dataDir = path.join(__dirname, '../data');
     const files = fs.readdirSync(dataDir).filter(file => file.endsWith('.csv'));
-    
+
     console.log(`📁 Found ${files.length} CSV files:`, files);
-    
+
     let allRecords = [];
-    
+
     for (const file of files) {
       const filePath = path.join(dataDir, file);
       const csvContent = fs.readFileSync(filePath, 'utf-8');
-      
+
       const records = parse(csvContent, {
         columns: true,
         skip_empty_lines: true,
         trim: true
       });
-      
+
       // Add source file info to each record
       const recordsWithSource = records.map(record => ({
         ...record,
         source_file: file
       }));
-      
+
       allRecords = allRecords.concat(recordsWithSource);
       console.log(`  ✅ Loaded ${records.length} records from ${file}`);
     }
-    
+
     console.log(`✅ Total loaded: ${allRecords.length} posts from all CSV files`);
-    
+
+    globalRecords = allRecords; // Save for stats
     return allRecords;
-    
+
   } catch (error) {
     console.error('❌ Error loading CSV files:', error);
     console.log('⚠️  Using sample data instead');
-    
+
     // Fallback to sample data
     return [
       {
@@ -106,11 +108,11 @@ async function loadCampaignData() {
 function createHierarchicalChunks(records) {
   console.log('\n🔄 GENERATING HIERARCHICAL CHUNKS');
   console.log('═'.repeat(60));
-  
+
   const documents = [];
-  
+
   console.log(`📊 Total posts to process: ${records.length}`);
-  
+
   // Level 1: Individual posts (most granular)
   console.log('\n📝 Creating Level 1 chunks (individual posts): ' + records.length + ' posts');
   records.forEach(record => {
@@ -130,7 +132,7 @@ Metrics:
 - Engagement Rate: ${record.engagement_rate || 'N/A'}
 Source: ${record.source_file || 'Unknown'}
     `.trim();
-    
+
     documents.push(new Document({
       pageContent: content,
       metadata: {
@@ -145,7 +147,7 @@ Source: ${record.source_file || 'Unknown'}
     }));
   });
   console.log(`✅ Created ${records.length} Level 1 chunks`);
-  
+
   // Level 2: Daily summaries grouped by platform
   console.log('\n📅 Creating Level 2 chunks (daily summaries)...');
   const dailyGroups = {};
@@ -158,7 +160,7 @@ Source: ${record.source_file || 'Unknown'}
     }
     dailyGroups[key].push(record);
   });
-  
+
   Object.entries(dailyGroups).forEach(([key, posts]) => {
     const [date, platform] = key.split('_');
     const totalImpressions = posts.reduce((sum, p) => sum + parseInt(p.impressions || 0), 0);
@@ -169,7 +171,7 @@ Source: ${record.source_file || 'Unknown'}
       const shares = parseInt(p.shares || 0);
       return sum + likes + comments + shares;
     }, 0);
-    
+
     const content = `
 Daily Summary for ${platform} on ${date}:
 - Total Posts: ${posts.length}
@@ -178,7 +180,7 @@ Daily Summary for ${platform} on ${date}:
 - Total Engagement: ${totalEngagement}
 - Post Types: ${[...new Set(posts.map(p => p.campaign_type || p.post_type))].join(', ')}
     `.trim();
-    
+
     documents.push(new Document({
       pageContent: content,
       metadata: {
@@ -191,7 +193,7 @@ Daily Summary for ${platform} on ${date}:
     }));
   });
   console.log(`✅ Created ${Object.keys(dailyGroups).length} Level 2 chunks`);
-  
+
   // Level 3: Monthly summaries by platform
   console.log('\n📆 Creating Level 3 chunks (monthly summaries)...');
   const monthlyGroups = {};
@@ -205,7 +207,7 @@ Daily Summary for ${platform} on ${date}:
     }
     monthlyGroups[key].push(record);
   });
-  
+
   Object.entries(monthlyGroups).forEach(([key, posts]) => {
     const [yearMonth, platform] = key.split('_');
     const totalImpressions = posts.reduce((sum, p) => sum + parseInt(p.impressions || 0), 0);
@@ -214,7 +216,7 @@ Daily Summary for ${platform} on ${date}:
       const rate = parseFloat(p.engagement_rate || 0);
       return sum + rate;
     }, 0) / posts.length;
-    
+
     const content = `
 Monthly Summary for ${platform} in ${yearMonth}:
 - Total Posts: ${posts.length}
@@ -223,7 +225,7 @@ Monthly Summary for ${platform} in ${yearMonth}:
 - Average Engagement Rate: ${avgEngagementRate.toFixed(2)}%
 - Campaign Types: ${[...new Set(posts.map(p => p.campaign_type || p.post_type))].join(', ')}
     `.trim();
-    
+
     documents.push(new Document({
       pageContent: content,
       metadata: {
@@ -236,7 +238,7 @@ Monthly Summary for ${platform} in ${yearMonth}:
     }));
   });
   console.log(`✅ Created ${Object.keys(monthlyGroups).length} Level 3 chunks`);
-  
+
   // Level 4: Platform overviews
   console.log('\n🌐 Creating Level 4 chunks (platform overviews)...');
   const platformGroups = {};
@@ -247,7 +249,7 @@ Monthly Summary for ${platform} in ${yearMonth}:
     }
     platformGroups[platform].push(record);
   });
-  
+
   Object.entries(platformGroups).forEach(([platform, posts]) => {
     const totalImpressions = posts.reduce((sum, p) => sum + parseInt(p.impressions || 0), 0);
     const totalReach = posts.reduce((sum, p) => sum + parseInt(p.reach || 0), 0);
@@ -255,7 +257,7 @@ Monthly Summary for ${platform} in ${yearMonth}:
       const rate = parseFloat(p.engagement_rate || 0);
       return sum + rate;
     }, 0) / posts.length;
-    
+
     const content = `
 Platform Overview for ${platform}:
 - Total Posts: ${posts.length}
@@ -265,7 +267,7 @@ Platform Overview for ${platform}:
 - Campaign Types: ${[...new Set(posts.map(p => p.campaign_type || p.post_type))].join(', ')}
 - Date Range: ${posts[0].posted_date} to ${posts[posts.length - 1].posted_date}
     `.trim();
-    
+
     documents.push(new Document({
       pageContent: content,
       metadata: {
@@ -277,7 +279,7 @@ Platform Overview for ${platform}:
     }));
   });
   console.log(`✅ Created ${Object.keys(platformGroups).length} Level 4 chunks`);
-  
+
   // Level 5: Cross-platform comparisons
   console.log('\n🔀 Creating Level 5 chunks (cross-platform comparisons)...');
   const platformStats = Object.entries(platformGroups).map(([platform, posts]) => {
@@ -287,7 +289,7 @@ Platform Overview for ${platform}:
       const rate = parseFloat(p.engagement_rate || 0);
       return sum + rate;
     }, 0) / posts.length;
-    
+
     return {
       platform,
       postCount: posts.length,
@@ -296,7 +298,7 @@ Platform Overview for ${platform}:
       avgEngagementRate
     };
   });
-  
+
   const content = `
 Cross-Platform Performance Comparison:
 ${platformStats.map(stat => `
@@ -310,7 +312,7 @@ ${stat.platform}:
 Best Performing Platform (by engagement): ${platformStats.sort((a, b) => b.avgEngagementRate - a.avgEngagementRate)[0].platform}
 Most Active Platform (by posts): ${platformStats.sort((a, b) => b.postCount - a.postCount)[0].platform}
   `.trim();
-  
+
   documents.push(new Document({
     pageContent: content,
     metadata: {
@@ -320,11 +322,11 @@ Most Active Platform (by posts): ${platformStats.sort((a, b) => b.postCount - a.
     }
   }));
   console.log(`✅ Created 1 Level 5 chunk`);
-  
+
   console.log('\n' + '═'.repeat(60));
   console.log(`✅ TOTAL CHUNKS CREATED: ${documents.length}`);
   console.log('═'.repeat(60) + '\n');
-  
+
   return documents;
 }
 
@@ -337,18 +339,18 @@ export async function initializeVectorStore() {
   try {
     const records = await loadCampaignData();
     const documents = createHierarchicalChunks(records);
-    
+
     console.log('🔧 Creating embeddings...');
     const embeddings = new OpenAIEmbeddings({
       openAIApiKey: process.env.OPENAI_API_KEY
     });
-    
+
     console.log('💾 Building vector store...');
     vectorStore = await MemoryVectorStore.fromDocuments(documents, embeddings);
-    
+
     console.log('✅ Vector store initialized successfully!\n');
     return vectorStore;
-    
+
   } catch (error) {
     console.error('❌ Failed to initialize vector store:', error);
     throw error;
@@ -364,8 +366,21 @@ export async function searchVectorStore(query, k = 5) {
   if (!vectorStore) {
     throw new Error('Vector store not initialized');
   }
-  
-  return await vectorStore.similaritySearch(query, k);
+
+  // Use similaritySearchWithScore to get [Document, score] tuples
+  // For MemoryVectorStore, score is typically cosine similarity (0 to 1, higher is better)
+  const resultsWithScore = await vectorStore.similaritySearchWithScore(query, k);
+
+  // Map back to a cleaner structure: Array of Documents with an added 'score' property
+  return resultsWithScore.map(([doc, score]) => {
+    // Clone the document to avoid mutating the original
+    const newDoc = new Document({
+      pageContent: doc.pageContent,
+      metadata: doc.metadata
+    });
+    newDoc.score = score;
+    return newDoc;
+  });
 }
 
 /**
@@ -377,12 +392,12 @@ export async function smartRetrieval(query, k = 10) {
   if (!vectorStore) {
     throw new Error('Vector store not initialized');
   }
-  
+
   console.log(`🔍 Smart retrieval for: "${query}"`);
-  
+
   // Search with higher k to get diverse results across levels
   const results = await vectorStore.similaritySearch(query, k);
-  
+
   // Group by level
   const byLevel = {
     1: [], // individual posts
@@ -391,14 +406,14 @@ export async function smartRetrieval(query, k = 10) {
     4: [], // platform overviews
     5: []  // cross-platform comparisons
   };
-  
+
   results.forEach(doc => {
     const level = doc.metadata.level || 1;
     if (byLevel[level]) {
       byLevel[level].push(doc);
     }
   });
-  
+
   // Prioritize: get mix of granular posts and higher-level summaries
   const selected = [
     ...byLevel[5].slice(0, 1),  // 1 cross-platform comparison if available
@@ -407,9 +422,9 @@ export async function smartRetrieval(query, k = 10) {
     ...byLevel[2].slice(0, 2),  // 2 daily summaries
     ...byLevel[1].slice(0, 3)   // 3 individual posts
   ];
-  
+
   console.log(`✅ Retrieved ${selected.length} documents across ${Object.keys(byLevel).filter(k => byLevel[k].length > 0).length} hierarchy levels`);
-  
+
   return selected;
 }
 
@@ -418,6 +433,94 @@ export async function smartRetrieval(query, k = 10) {
  * GET VECTOR STORE
  * ═══════════════════════════════════════════════════════════════════════════
  */
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * GET VECTOR STORE
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
 export function getVectorStore() {
   return vectorStore;
+}
+
+/**
+ * GET RAW RECORDS (for stats)
+ */
+export function getGlobalRecords() {
+  return globalRecords;
+}
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * GET PLATFORM STATS (Best Time Analysis)
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
+export function getPlatformStats(platform) {
+  if (!globalRecords || globalRecords.length === 0) {
+    return { bestDay: "Wednesday", bestHour: "10:00", topDays: [], topHours: [] };
+  }
+
+  // Filter for platform
+  const posts = globalRecords.filter(r =>
+    r.platform && r.platform.toLowerCase() === platform.toLowerCase()
+  );
+
+  if (posts.length === 0) return { bestDay: "Wednesday", bestHour: "10:00", topDays: [], topHours: [] };
+
+  // Aggregate Engagement by Day and Hour
+  const dayStats = {};
+  const hourStats = {};
+
+  posts.forEach(post => {
+    if (!post.posted_date || !post.posted_time) return;
+
+    // Parse Date & Time
+    const dateStr = post.posted_date;
+    const timeStr = post.posted_time;
+
+    try {
+      const date = new Date(`${dateStr}T${timeStr}`);
+      if (isNaN(date.getTime())) return;
+
+      const day = date.toLocaleDateString('en-US', { weekday: 'long' });
+      const hour = date.getHours();
+      const engagement = parseFloat(post.engagement_rate || 0);
+
+      // Summing 
+      if (!dayStats[day]) dayStats[day] = { total: 0, count: 0 };
+      dayStats[day].total += engagement;
+      dayStats[day].count++;
+
+      if (!hourStats[hour]) hourStats[hour] = { total: 0, count: 0 };
+      hourStats[hour].total += engagement;
+      hourStats[hour].count++;
+    } catch (e) {
+      // ignore
+    }
+  });
+
+  // Calculate Top 3 Days
+  const sortedDays = Object.entries(dayStats)
+    .map(([day, stats]) => ({ day, avg: stats.total / stats.count }))
+    .sort((a, b) => b.avg - a.avg)
+    .slice(0, 3);
+
+  // Calculate Top 3 Hours
+  const sortedHours = Object.entries(hourStats)
+    .map(([hour, stats]) => ({ hour: parseInt(hour), avg: stats.total / stats.count }))
+    .sort((a, b) => b.avg - a.avg)
+    .slice(0, 3);
+
+  const bestDay = sortedDays.length > 0 ? sortedDays[0].day : "Wednesday";
+  const bestHourStr = sortedHours.length > 0 ? `${sortedHours[0].hour.toString().padStart(2, '0')}:00` : "10:00";
+  const bestAvg = sortedDays.length > 0 ? sortedDays[0].avg : 0;
+
+  console.log(`📊 Stats: Top Days: ${sortedDays.map(d => d.day).join(', ')} | Top Hours: ${sortedHours.map(h => h.hour).join(', ')}`);
+
+  return {
+    bestDay,
+    bestHour: bestHourStr,
+    avgEngagement: bestAvg,
+    topDays: sortedDays,
+    topHours: sortedHours
+  };
 }

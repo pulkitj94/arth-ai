@@ -22,8 +22,9 @@ export const APP_CONFIG = {
   // API CONFIGURATION
   // ═══════════════════════════════════════════════════════════════════════════
 
-  apiBaseUrl: '',
+  apiBaseUrl: 'http://localhost:3001',
   apiEndpoint: '/api/chat',
+  API_URL: 'http://localhost:3001', // Explicit fallback
 
   // ═══════════════════════════════════════════════════════════════════════════
   // SAMPLE QUERIES (shown in sidebar)

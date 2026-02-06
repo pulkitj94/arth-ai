@@ -14,6 +14,7 @@ import cron from 'node-cron';
 
 // Existing project imports
 import chatRoutes from './routes/chat.js';
+import predictorRoutes from './routes/predictor.js';
 import { initializeVectorStore } from './langchain/vectorStore.js';
 import { startCacheCleanup } from './utils/cache.js';
 import { startPeriodicAnalytics } from './utils/queryLogger.js';
@@ -29,7 +30,8 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '50mb' })); // Increased limit for image uploads
+app.use('/api/predict', predictorRoutes);
 
 // ═══════════════════════════════════════════════════════════════════════════
 // SHARED SIMULATION LOGIC
