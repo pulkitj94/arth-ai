@@ -20,11 +20,47 @@ import { LANGCHAIN_CONFIG } from './config.js';
  * ═══════════════════════════════════════════════════════════════════════════
  */
 let llm = null;
-function getLLM() {
-  if (!llm) {
+
+// ✏️ CUSTOMIZE THIS: Controls how temperature is selected per query type
+function getTemperatureForQuery(query) {
+  const profiles = LANGCHAIN_CONFIG.llm.temperatureProfiles;
+  const lowerQuery = query.toLowerCase();
+
+  if (/draft|write|create|post\s+idea|content\s+idea|what\s+should\s+i\s+post/i.test(lowerQuery)) {
+    console.log(`🎨 Creative query detected → temperature: ${profiles.contentCreation}`);
+    return profiles.contentCreation;
+  }
+  if (/strategy|recommend|suggest|how\s+to\s+improve|optimize|should\s+i|should\s+we/i.test(lowerQuery)) {
+    console.log(`🧠 Strategic query detected → temperature: ${profiles.strategic}`);
+    return profiles.strategic;
+  }
+  if (/compare|vs\.?|versus|better|worse|which\s+platform/i.test(lowerQuery)) {
+    console.log(`⚖️  Comparative query detected → temperature: ${profiles.comparative}`);
+    return profiles.comparative;
+  }
+  if (/trend|over\s+time|last\s+(week|month)|this\s+(week|month)|january|february|march|april|may|june|july|august|september|october|november|december/i.test(lowerQuery)) {
+    console.log(`📅 Temporal query detected → temperature: ${profiles.temporal}`);
+    return profiles.temporal;
+  }
+  if (/most|highest|top|best|find|which\s+post/i.test(lowerQuery)) {
+    console.log(`🔍 Factual query detected → temperature: ${profiles.factual}`);
+    return profiles.factual;
+  }
+  if (/worst|lowest|poorest|underperform|avoid|decline/i.test(lowerQuery)) {
+    console.log(`📉 Negative query detected → temperature: ${profiles.negative}`);
+    return profiles.negative;
+  }
+
+  console.log(`❓ Unclassified query → temperature: ${profiles.default}`);
+  return profiles.default;
+}
+
+function getLLM(temperature = null) {
+  const temp = temperature ?? LANGCHAIN_CONFIG.llm.temperature;
+  if (!llm || llm.temperature !== temp) {
     llm = new ChatOpenAI({
       modelName: LANGCHAIN_CONFIG.llm.modelName,
-      temperature: LANGCHAIN_CONFIG.llm.temperature,
+      temperature: temp,
       maxTokens: LANGCHAIN_CONFIG.llm.maxTokens,
     });
   }
@@ -121,7 +157,8 @@ function getLevelName(level) {
  * ═══════════════════════════════════════════════════════════════════════════
  * Main chain that orchestrates retrieval and generation
  */
-export async function createRAGChain() {
+export async function createRAGChain(query = '') {
+  const temperature = getTemperatureForQuery(query);
   // Create chain: Retrieval → Format → LLM → Parse
   const chain = RunnableSequence.from([
     {
@@ -137,7 +174,7 @@ export async function createRAGChain() {
       question: (input) => input.question
     },
     promptTemplate,
-    getLLM(),
+    getLLM(temperature),
     new StringOutputParser()
   ]);
 
@@ -161,7 +198,7 @@ export async function processQuery(query) {
   try {
     // Create and invoke chain
     console.log('\n⚙️  Building RAG chain...');
-    const chain = await createRAGChain();
+    const chain = await createRAGChain(query);
 
     console.log('🚀 Invoking chain...');
     const response = await chain.invoke({ question: query });
@@ -255,9 +292,10 @@ export async function streamQuery(query, onToken) {
     const context = formatContext(docs);
 
     // Create streaming LLM
+    const temperature = getTemperatureForQuery(query);
     const streamingLLM = new ChatOpenAI({
       modelName: LANGCHAIN_CONFIG.llm.modelName,
-      temperature: LANGCHAIN_CONFIG.llm.temperature,
+      temperature: temperature,
       streaming: true,
       callbacks: [
         {

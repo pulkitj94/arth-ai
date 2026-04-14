@@ -44,6 +44,68 @@ class QueryProcessor {
     this.initialized = true;
   }
 
+  // ✏️ CUSTOMIZE THIS: Update date ranges when you add new data
+  rewriteRelativeTimeQuery(userQuery) {
+    // Periods with NO data — intercept and warn immediately
+    const noDataPeriods = [
+      { pattern: /\blast\s+month\b/i, period: 'March 2026', suggestion: 'December 2025' },
+      { pattern: /\bthis\s+month\b/i, period: 'April 2026', suggestion: 'December 2025' },
+      { pattern: /\blast\s+week\b/i, period: 'April 7-13, 2026', suggestion: 'December 2025' },
+      { pattern: /\bthis\s+week\b/i, period: 'April 14, 2026', suggestion: 'December 2025' },
+      { pattern: /\blast\s+quarter\b/i, period: 'Q1 2026 (January–March 2026)', suggestion: 'Q4 2025 (October–December 2025)' },
+      { pattern: /\bthis\s+quarter\b/i, period: 'Q2 2026 (April–June 2026)', suggestion: 'Q4 2025 (October–December 2025)' },
+      { pattern: /\bthis\s+year\b/i, period: '2026', suggestion: '2025' },
+    ];
+
+    for (const { pattern, period, suggestion } of noDataPeriods) {
+      if (pattern.test(userQuery)) {
+        console.log(`⚠️  Relative time intercepted: "${period}" has no data → suggesting "${suggestion}"`);
+        return {
+          rewritten: false,
+          warning: `⚠️ **No data available for ${period}**\n\nThe dataset covers historical data up to **December 2025**. No data exists for ${period}.\n\n💡 **Try asking instead:**\n- "${userQuery.replace(pattern, suggestion)}"\n- "Show me ${suggestion} performance"\n- "What was our best performing content in ${suggestion}?"`
+        };
+      }
+    }
+
+    // Month names without year — ask for clarification
+      const ambiguousMonths = [
+        'january', 'february', 'march', 'april', 'may', 'june',
+        'july', 'august', 'september', 'october', 'november', 'december'
+      ];
+
+      const monthPattern = new RegExp(
+        `\\b(${ambiguousMonths.join('|')})\\b(?!\\s*202[0-9])`,
+        'i'
+      );
+
+      if (monthPattern.test(userQuery)) {
+        const match = userQuery.match(monthPattern);
+        const monthName = match[1];
+        const capitalMonth = monthName.charAt(0).toUpperCase() + monthName.slice(1);
+        console.log(`⚠️  Ambiguous month detected: "${capitalMonth}" — no year specified`);
+        return {
+          rewritten: false,
+          warning: `📅 **Which ${capitalMonth} are you referring to?**\n\nThe dataset covers data up to **December 2025**. Please specify the year:\n\n💡 **Try asking:**\n- "${userQuery.replace(monthPattern, `${capitalMonth} 2025`)}"\n- "${userQuery.replace(monthPattern, `${capitalMonth} 2024`)}"`
+        };
+}
+
+// Periods WITH data — rewrite to be explicit
+const rewrites = [
+  { pattern: /\blast\s+year\b/i, replacement: '2025' },
+  { pattern: /\bprevious\s+year\b/i, replacement: '2025' },
+];
+
+    let rewrittenQuery = userQuery;
+    for (const { pattern, replacement } of rewrites) {
+      if (pattern.test(rewrittenQuery)) {
+        rewrittenQuery = rewrittenQuery.replace(pattern, replacement);
+        console.log(`✏️  Query rewritten: "${userQuery}" → "${rewrittenQuery}"`);
+      }
+    }
+
+    return { rewritten: rewrittenQuery !== userQuery, query: rewrittenQuery };
+  }
+
   /**
    * Process a user query with multi-step support
    * Note: Conversation chaining removed - each query is independent
@@ -51,6 +113,26 @@ class QueryProcessor {
    * @returns {Object} Complete response with data and metadata
    */
   async processQuery(userQuery) {
+    // ✏️ Intercept relative time queries before filter generation
+    const timeCheck = this.rewriteRelativeTimeQuery(userQuery);
+    if (timeCheck.warning) {
+      return {
+        success: true,
+        query: userQuery,
+        response: timeCheck.warning,
+        narrative: timeCheck.warning,
+        data: [],
+        insights: {},
+        summary: { totalRecords: 0, recordsReturned: 0 },
+        processingTime: '0.00',
+        timestamp: new Date().toISOString(),
+        metadata: { processingTimeMs: 0, llmCalls: 0 }
+      };
+    }
+    if (timeCheck.rewritten) {
+      userQuery = timeCheck.query;
+    }
+
     const conversationManager = getConversationManager();
 
     // Analyze if query is multi-step (no context checking)
@@ -99,7 +181,6 @@ class QueryProcessor {
           console.log(`⚠️  Step ${step.stepNumber} needs clarification - returning to user`);
           console.log('='.repeat(80) + '\n');
 
-          // Return clarification immediately - don't continue processing
           return {
             success: false,
             needsClarification: true,
@@ -132,7 +213,6 @@ class QueryProcessor {
           error: error.message,
         });
 
-        // If a step fails, stop processing
         break;
       }
     }
@@ -176,7 +256,7 @@ class QueryProcessor {
         })),
         totalSteps: analysis.steps.length,
         successfulSteps: stepResults.filter(s => s.success).length,
-        llmCalls: stepResults.filter(s => s.success).length * 2 + 1, // Each step + analysis
+        llmCalls: stepResults.filter(s => s.success).length * 2 + 1,
       },
       stepResults: stepResults,
     };
@@ -189,7 +269,6 @@ class QueryProcessor {
     const successfulSteps = stepResults.filter(s => s.success);
     const lastStep = successfulSteps[successfulSteps.length - 1];
 
-    // If no successful steps, return error narrative
     if (!lastStep || !lastStep.data || lastStep.data.length === 0) {
       let narrative = `I processed your multi-step query in ${stepResults.length} step(s):\n\n`;
 
@@ -206,9 +285,7 @@ class QueryProcessor {
       return narrative;
     }
 
-    // Use LLM to generate detailed, insightful narrative for successful multi-step query
     try {
-      // Create a detailed query for the response framer
       const detailedQuery = `${originalQuery}
 
 Provide a comprehensive executive summary with:
@@ -218,7 +295,6 @@ Provide a comprehensive executive summary with:
 4. Recommendation - actionable next steps
 5. Context - comparisons or additional insights`;
 
-      // Use the response framer to generate a detailed narrative
       const response = await this.responseFramer.frameResponse(
         detailedQuery,
         {
@@ -239,18 +315,15 @@ Provide a comprehensive executive summary with:
         }
       );
 
-      // Validate that the response contains actual insights
       if (response && response.length > 100) {
         return response;
       }
 
-      // Fallback to simple narrative if LLM fails
       throw new Error('LLM response too short');
 
     } catch (error) {
       console.log('⚠️  Failed to generate detailed narrative with LLM, using fallback:', error.message);
 
-      // Fallback: Simple narrative
       let narrative = `I processed your multi-step query in ${stepResults.length} step(s):\n\n`;
 
       stepResults.forEach(step => {
@@ -263,7 +336,6 @@ Provide a comprehensive executive summary with:
         }
       });
 
-      // Add final results summary
       if (lastStep && lastStep.data.length > 0) {
         narrative += `\n**Final Results:**\n\n`;
 
@@ -285,7 +357,6 @@ Provide a comprehensive executive summary with:
 
   /**
    * Process a single query (used by both single-step and multi-step)
-   * Note: No conversation context used
    * @param {string} userQuery - The user's natural language query
    * @returns {Object} Complete response with data and metadata
    */
@@ -299,7 +370,6 @@ Provide a comprehensive executive summary with:
     console.log('');
 
     try {
-      // Ensure initialized
       if (!this.initialized) {
         await this.initialize();
       }
@@ -308,14 +378,9 @@ Provide a comprehensive executive summary with:
       console.log('📝 Step 1/5: Generating filters with LLM...');
       const filterSpec = await this.filterGenerator.generateFilters(userQuery, this.metadata);
 
-      // Check if filter generator needs clarification
       if (filterSpec.needsClarification) {
         console.log('⚠️  Query needs clarification from filter generator');
-        console.log(`   - Question: ${filterSpec.clarificationNeeded}`);
-        console.log(`   - Options: ${filterSpec.alternatives?.length || filterSpec.suggestedOptions?.length || 0}`);
 
-        // SPECIAL CASE: Educational/informational content with no options
-        // Return as successful informational response instead of clarification
         const hasOptions = (filterSpec.alternatives?.length || filterSpec.suggestedOptions?.length || 0) > 0;
         if (!hasOptions && filterSpec.explanation && filterSpec.isDataDiscovery) {
           console.log('ℹ️  Returning educational content as informational response');
@@ -326,9 +391,7 @@ Provide a comprehensive executive summary with:
             data: [],
             insights: {},
             summary: { totalRecords: 0, recordsReturned: 0 },
-            metadata: {
-              processingTimeMs: Date.now() - startTime,
-            }
+            metadata: { processingTimeMs: Date.now() - startTime }
           };
         }
 
@@ -340,12 +403,10 @@ Provide a comprehensive executive summary with:
             options: filterSpec.alternatives || filterSpec.suggestedOptions || [],
             suggestedQueries: filterSpec.suggestedQueries || [],
             reason: filterSpec.interpretation || filterSpec.reason,
-            explanation: filterSpec.explanation // Pass through explanation for educational content
+            explanation: filterSpec.explanation
           },
           message: 'This query is ambiguous and needs clarification',
-          metadata: {
-            processingTimeMs: Date.now() - startTime,
-          }
+          metadata: { processingTimeMs: Date.now() - startTime }
         };
       }
 
@@ -359,7 +420,7 @@ Provide a comprehensive executive summary with:
       console.log('\n📋 Full Filter Specification:');
       console.log(JSON.stringify(filterSpec, null, 2));
 
-      // Step 1.5: Check if query intent matches filters (CLARIFICATION CHECK)
+      // Step 1.5: Validate query intent
       console.log('\n🔍 Step 1.5/5: Validating query intent...');
       const intentValidation = this.queryValidator.validate(userQuery, filterSpec, this.metadata);
 
@@ -369,7 +430,6 @@ Provide a comprehensive executive summary with:
           console.log(`   - [${issue.severity.toUpperCase()}] ${issue.message}`);
         });
 
-        // Return clarification request instead of proceeding
         return {
           success: false,
           needsClarification: true,
@@ -378,9 +438,7 @@ Provide a comprehensive executive summary with:
           userIntent: intentValidation.userIntent,
           filterIntent: intentValidation.filterIntent,
           message: 'This query needs clarification before proceeding',
-          metadata: {
-            processingTimeMs: Date.now() - startTime,
-          }
+          metadata: { processingTimeMs: Date.now() - startTime }
         };
       }
 
@@ -406,7 +464,6 @@ Provide a comprehensive executive summary with:
 
       console.log('✅ Filters validated successfully');
 
-      // Sanitize filters
       const sanitizedFilterSpec = validator.sanitize(filterSpec);
 
       // Step 3: Apply filters and process data
@@ -429,12 +486,12 @@ Provide a comprehensive executive summary with:
       );
       console.log('✅ Response generated');
 
-      // Step 5: Generate insights from data (not LLM-generated, deterministic)
+      // Step 5: Generate deterministic insights
       console.log('\n📊 Step 5/5: Generating deterministic insights...');
       const insights = this.generateInsights(processedData, sanitizedFilterSpec);
       console.log('✅ Insights generated');
 
-      // Step 6: Validate LLM response
+      // Validate LLM response
       console.log('\n🔍 Validating LLM response...');
       const responseValidation = this.responseValidator.validate(narrative, processedData.data, insights);
 
@@ -461,17 +518,11 @@ Provide a comprehensive executive summary with:
 
       return {
         success: true,
-        // Structured data (always accurate)
         data: processedData.data,
-        // LLM-generated natural language (for qualitative insights)
         narrative: narrative,
-        // Data-driven insights (deterministic, no LLM)
         insights: insights,
-        // Legacy response field for backward compatibility
         response: narrative,
-        // Summary statistics
         summary: processedData.summary,
-        // Query metadata
         metadata: {
           processingTimeMs: totalTime,
           dataProcessingTimeMs: processedData.summary.processingTimeMs,
@@ -480,7 +531,7 @@ Provide a comprehensive executive summary with:
           recordsAnalyzed: processedData.summary.filteredRecords,
           recordsTotal: processedData.summary.originalRecords,
           resultsReturned: processedData.summary.resultCount,
-          llmCalls: 2, // Filter generation + Response framing
+          llmCalls: 2,
           validation: {
             confidence: responseValidation.confidence,
             warnings: responseValidation.warnings,
@@ -488,10 +539,9 @@ Provide a comprehensive executive summary with:
             stats: responseValidation.stats
           }
         },
-        // Debug info
         debug: {
           filterSpec: sanitizedFilterSpec,
-          processedData: processedData.data.slice(0, 10) // First 10 results for debugging
+          processedData: processedData.data.slice(0, 10)
         }
       };
 
@@ -512,12 +562,11 @@ Provide a comprehensive executive summary with:
   }
 
   /**
-   * Generate user-friendly error response with actionable suggestions
+   * Generate user-friendly error response
    */
   generateErrorResponse(error, userQuery) {
     const errorMessage = error.message || 'Unknown error';
 
-    // Filter validation errors
     if (errorMessage.includes('Filter validation failed')) {
       return `I encountered an issue understanding your query. The filters I tried to create were invalid.
 
@@ -531,11 +580,10 @@ Try rephrasing your question more specifically:
 - ✅ "Compare Facebook and Instagram performance in November"
 - ✅ "Top 5 posts with most likes on Instagram"
 
-**Available platforms:** Instagram, Facebook, Twitter, LinkedIn, TikTok, YouTube
+**Available platforms:** Instagram, Facebook, Twitter, LinkedIn
 **Available metrics:** likes, comments, shares, engagement_rate, reach, impressions`;
     }
 
-    // LLM JSON parsing errors
     if (errorMessage.includes('LLM did not return valid JSON')) {
       return `I had trouble processing your query. The system couldn't generate appropriate filters.
 
@@ -546,42 +594,31 @@ Try rephrasing your question more specifically:
 
 **Examples of well-formed queries:**
 - "Show posts with more than 1000 likes"
-- "Posts from November on Instagram"
+- "Posts from November 2025 on Instagram"
 - "Compare engagement across platforms"`;
     }
 
-    // Column not found errors
     if (errorMessage.includes('Column') && errorMessage.includes('not found')) {
       return `I couldn't find the column or field you're asking about.
 
 **Error:** ${errorMessage}
 
-**💡 Suggestions:**
-Available columns you can query:
+**💡 Available columns:**
 - **Post data:** post_id, platform, post_date, content, likes, comments, shares, engagement_rate
 - **Campaign data:** campaign_id, campaign_name, ad_spend, revenue, roas, ctr, impressions
-- **Metrics:** reach, clicks, conversions
-
-Try rephrasing with one of these column names.`;
+- **Metrics:** reach, clicks, conversions`;
     }
 
-    // No data found
     if (errorMessage.includes('No data') || errorMessage.includes('0 records')) {
       return `No data found matching your query.
 
 **💡 Suggestions:**
 - Try broadening your search criteria
-- Check if the platform name is correct (Instagram, Facebook, Twitter, etc.)
-- Verify the date range exists in the dataset
-- Try removing some filters
-
-**Example queries that work:**
-- "Show all Instagram posts"
-- "Posts from last month"
-- "Top performing content"`;
+- Check if the platform name is correct (Instagram, Facebook, Twitter, LinkedIn)
+- The dataset covers data up to December 2025
+- Try removing some filters`;
     }
 
-    // Generic error with suggestions
     return `I encountered an error while processing your query: "${userQuery}"
 
 **Error:** ${errorMessage}
@@ -590,19 +627,11 @@ Try rephrasing with one of these column names.`;
 1. Try rephrasing your question more clearly
 2. Use specific dates (e.g., "November 2025" instead of "last month")
 3. Specify the platform name clearly
-4. Break complex questions into simpler parts
-
-**Need help?** Try asking:
-- "What platforms are available?"
-- "Show me a sample post"
-- "What metrics can I query?"
-
-If the issue persists, please contact support.`;
+4. Break complex questions into simpler parts`;
   }
 
   /**
    * Generate deterministic insights from processed data
-   * This is NOT LLM-generated - pure data analysis
    */
   generateInsights(processedData, filterSpec) {
     const { data, summary } = processedData;
@@ -613,19 +642,11 @@ If the issue persists, please contact support.`;
       statistics: {}
     };
 
-    // Determine query type based on filter spec
     if (filterSpec.groupBy && filterSpec.groupBy.length > 0) {
-      // Comparison/Aggregation query
       insights.type = 'comparison';
       insights.keyFindings.push(`Analyzed ${summary.filteredRecords} records across ${data.length} groups`);
+      insights.topResults = data.slice(0, 5).map((item, index) => ({ rank: index + 1, ...item }));
 
-      // Extract top results
-      insights.topResults = data.slice(0, 5).map((item, index) => ({
-        rank: index + 1,
-        ...item
-      }));
-
-      // Calculate statistics
       if (filterSpec.aggregate && Object.keys(filterSpec.aggregate).length > 0) {
         const aggKeys = Object.keys(filterSpec.aggregate);
         const metricKey = `${aggKeys[0]}_${filterSpec.aggregate[aggKeys[0]]}`;
@@ -642,16 +663,11 @@ If the issue persists, please contact support.`;
           };
         }
       }
-
     } else {
-      // Individual item query
       insights.type = 'individual_items';
       insights.keyFindings.push(`Found ${data.length} matching record(s) from ${summary.filteredRecords} filtered records`);
-
-      // Extract top results with all fields
       insights.topResults = data.slice(0, 10);
 
-      // Calculate statistics for numeric columns
       if (data.length > 0) {
         const numericColumns = Object.keys(data[0]).filter(key => {
           const value = data[0][key];
@@ -673,7 +689,6 @@ If the issue persists, please contact support.`;
       }
     }
 
-    // Add filter information
     insights.filtersApplied = filterSpec.filters ? filterSpec.filters.length : 0;
     insights.groupedBy = filterSpec.groupBy || [];
     insights.sortedBy = filterSpec.sortBy ? `${filterSpec.sortBy.column} (${filterSpec.sortBy.order})` : null;
@@ -681,9 +696,6 @@ If the issue persists, please contact support.`;
     return insights;
   }
 
-  /**
-   * Get metadata summary (for debugging)
-   */
   async getMetadataSummary() {
     if (!this.initialized) {
       await this.initialize();
@@ -691,26 +703,17 @@ If the issue persists, please contact support.`;
     return this.metadataExtractor.getSummary();
   }
 
-  /**
-   * Clear all caches (useful for testing)
-   */
   clearCache() {
     this.dataProcessor.clearCache();
     this.metadata = null;
     this.initialized = false;
   }
 
-  /**
-   * Clear conversation session (no-op - conversation chaining disabled)
-   */
   clearConversation() {
     const conversationManager = getConversationManager();
     conversationManager.clearSession();
   }
 
-  /**
-   * Get conversation statistics (returns disabled status)
-   */
   getConversationStats() {
     const conversationManager = getConversationManager();
     return conversationManager.getStats();
@@ -720,9 +723,6 @@ If the issue persists, please contact support.`;
 // Singleton instance
 let instance = null;
 
-/**
- * Get singleton instance of QueryProcessor
- */
 function getQueryProcessor() {
   if (!instance) {
     instance = new QueryProcessor();

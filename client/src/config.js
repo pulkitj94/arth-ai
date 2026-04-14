@@ -14,7 +14,7 @@ export const APP_CONFIG = {
   // ═══════════════════════════════════════════════════════════════════════════
   // ✏️ CUSTOMIZE: Change app name and tagline
 
-  appName: 'Social Command Center',
+  appName: 'ARTH AI',
   appTagline: 'AI-Powered Social Media Intelligence',
   appDescription: 'Ask anything about your social media performance',
 
@@ -121,7 +121,7 @@ export const APP_CONFIG = {
 
   welcomeMessage: {
     show: true,
-    title: 'Welcome to Social Command Center! 👋',
+    title: 'Welcome to ARTH AI!',
     content: `I'm your AI-powered social media analyst. I can help you:
 
 • 📊 Analyze performance across all platforms

@@ -1855,6 +1855,17 @@ QUARTER TO MONTH MAPPING (Default to 2025 unless user specifies year):
 - If no year specified, default to 2025 (the year of the dataset)
 - Extract year from query using pattern: /\b(202[0-9]|203[0-9])\b/
 
+**RELATIVE DATE HANDLING — CRITICAL:**
+- Today is April 14, 2026
+- "last month" = March 2026 (03-2026) — NO data exists for this, return empty filter and flag it
+- "this month" = April 2026 (04-2026) — NO data exists for this, return empty filter and flag it
+- "last week" = April 7-13, 2026 — NO data exists for this, return empty filter and flag it
+- "last quarter" = Q1 2026 (Jan-Mar 2026) — NO data exists for this, return empty filter and flag it
+- "last year" = 2025 — data EXISTS, use 2025
+- "this quarter" = Q2 2026 — NO data exists, return empty filter and flag it
+- When NO data exists for the requested period, set filters to match 12-2025 (most recent available) AND add "interpretation" field explaining: "No data available for [requested period]. Showing most recent available data from December 2025 instead."
+- NEVER silently fall back to 2025 data when user asked for 2026 — always flag it
+
 HOW TO FILTER BY QUARTER (USE OR LOGIC) - CRITICAL:
 
 ⚠️⚠️⚠️ MANDATORY EXAMPLE - MEMORIZE THIS ⚠️⚠️⚠️

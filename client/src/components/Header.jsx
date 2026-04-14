@@ -32,7 +32,7 @@ export default function Header() {
         <>
             <header className="h-16 bg-white border-b border-gray-100 flex items-center justify-between px-8 sticky top-0 z-10">
                 <div>
-                    <h1 className="text-xl font-bold text-navy">Social Media Dashboard</h1>
+                    <h1 className="text-xl font-bold text-navy">ARTH AI — Social Media Intelligence</h1>
                 </div>
 
                 <div className="flex items-center gap-6">
