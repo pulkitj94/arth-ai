@@ -22,9 +22,9 @@ export const APP_CONFIG = {
   // API CONFIGURATION
   // ═══════════════════════════════════════════════════════════════════════════
 
-  apiBaseUrl: 'http://localhost:3001',
+  apiBaseUrl: import.meta.env.VITE_API_URL || 'http://localhost:3001',
   apiEndpoint: '/api/chat',
-  API_URL: 'http://localhost:3001', // Explicit fallback
+  API_URL: import.meta.env.VITE_API_URL || 'http://localhost:3001',
 
   // ═══════════════════════════════════════════════════════════════════════════
   // SAMPLE QUERIES (shown in sidebar)
